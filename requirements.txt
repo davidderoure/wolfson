@@ -1,0 +1,4 @@
+python-rtmidi
+torch
+numpy
+pretty_midi
