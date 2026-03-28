@@ -39,7 +39,8 @@ import pretty_midi
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.instruments import codes_for, PITCH_RANGES, family_for_code
-from data.encoding import phrase_to_tokens, VOCAB_SIZE, END_TOKEN
+from data.encoding import phrase_to_tokens, phrase_to_chord_sequence, VOCAB_SIZE, END_TOKEN
+from data.chords import parse_chord, NC_INDEX
 
 RAW_DIR       = Path(__file__).parent / "raw"
 PROCESSED_DIR = Path(__file__).parent / "processed"
@@ -115,27 +116,29 @@ def load_solos(db: sqlite3.Connection, instrument_codes: list[str]) -> list[dict
     for melid, title, performer, instrument, avgtempo in rows:
         tempo_bpm = float(avgtempo) if avgtempo else 120.0
 
-        # Fetch notes. beatdur is the local beat duration in seconds at each note —
-        # use it directly for beat-relative duration encoding (more accurate than
-        # dividing by average tempo, since jazz performances vary in feel/tempo).
+        # Fetch notes with per-note beat duration and the chord active at each onset.
+        # The subquery picks the most recent chord change at or before each note.
         cur.execute("""
-            SELECT pitch, onset, duration, beatdur
-            FROM melody
-            WHERE melid = ?
-            ORDER BY onset
+            SELECT m.pitch, m.onset, m.duration, m.beatdur,
+                   (SELECT b.chord FROM beats b
+                    WHERE b.melid = m.melid AND b.onset <= m.onset
+                    ORDER BY b.onset DESC LIMIT 1) AS chord
+            FROM melody m
+            WHERE m.melid = ?
+            ORDER BY m.onset
         """, (melid,))
 
         notes = []
-        for pitch, onset, duration, beatdur in cur.fetchall():
+        for pitch, onset, duration, beatdur, chord_str in cur.fetchall():
             if pitch is None or onset is None or duration is None:
                 continue
-            # beatdur may be null for some entries; fall back to avg tempo
             beat_dur_sec = float(beatdur) if beatdur else (60.0 / tempo_bpm)
             notes.append({
                 "pitch":        int(round(float(pitch))),
                 "onset":        float(onset),
                 "offset":       float(onset) + float(duration),
                 "beat_dur_sec": beat_dur_sec,
+                "chord_idx":    parse_chord(chord_str) if chord_str else NC_INDEX,
             })
 
         solos.append({
@@ -325,6 +328,7 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
 
     pitch_min, pitch_max = PITCH_RANGES[family]
     all_sequences = []
+    all_chords    = []
     meta = []
     total_phrases = 0
     total_notes   = 0
@@ -337,8 +341,10 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
                 if n["pitch"] < pitch_min or n["pitch"] > pitch_max:
                     skipped_pitch += 1
 
-            tokens = phrase_to_tokens(phrase, solo["tempo_bpm"])
-            all_sequences.append(np.array(tokens, dtype=np.int16))
+            tokens     = phrase_to_tokens(phrase, solo["tempo_bpm"])
+            chord_seq  = phrase_to_chord_sequence(phrase)
+            all_sequences.append(np.array(tokens,    dtype=np.int16))
+            all_chords.append(   np.array(chord_seq, dtype=np.int8))
             meta.append({
                 "melid":      solo["melid"],
                 "title":      solo["title"],
@@ -350,10 +356,12 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
             total_phrases += 1
             total_notes   += len(phrase)
 
-    out_seqs = PROCESSED_DIR / f"{family}_sequences.npy"
-    out_meta = PROCESSED_DIR / f"{family}_meta.json"
+    out_seqs   = PROCESSED_DIR / f"{family}_sequences.npy"
+    out_chords = PROCESSED_DIR / f"{family}_chords.npy"
+    out_meta   = PROCESSED_DIR / f"{family}_meta.json"
 
-    np.save(out_seqs, np.array(all_sequences, dtype=object), allow_pickle=True)
+    np.save(out_seqs,   np.array(all_sequences, dtype=object), allow_pickle=True)
+    np.save(out_chords, np.array(all_chords,    dtype=object), allow_pickle=True)
     with open(out_meta, "w") as f:
         json.dump(meta, f, indent=2)
 
@@ -364,6 +372,7 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
     print(f"{'Vocab size:':30s} {VOCAB_SIZE}")
     print(f"\nSaved:")
     print(f"  {out_seqs}")
+    print(f"  {out_chords}")
     print(f"  {out_meta}")
 
 
