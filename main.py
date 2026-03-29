@@ -26,6 +26,7 @@ Self-play mode (--self-play):
 import argparse
 import threading
 import time
+from collections import Counter, deque
 
 from input.midi_listener    import MidiListener
 from input.phrase_detector  import PhraseDetector
@@ -39,6 +40,10 @@ from config import DEFAULT_INSTRUMENT, TEMPO_HINT_BPM
 
 PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
 
+# Phrase statistics summary
+STATS_WINDOW = 8    # rolling window — how many recent phrases are counted
+STATS_EVERY  = 8    # print a summary block after every N phrases
+
 # Self-play: brief silence between phrases (seconds) — musical breathing room
 SELF_PLAY_PHRASE_GAP = 0.05
 
@@ -46,6 +51,50 @@ SELF_PLAY_PHRASE_GAP = 0.05
 # Gives the LSTM something musical to respond to on the very first exchange.
 _SEED_PITCHES    = [62, 65, 67, 69, 72, 69, 67]   # D4 F4 G4 A4 C5 A4 G4
 _SEED_DUR_BEATS  = [0.5, 0.5, 0.5, 0.5, 1.0, 0.5, 1.0]
+
+
+class _PhraseStats:
+    """
+    Rolling-window statistics for phrase generation parameters.
+
+    Records the last STATS_WINDOW phrases and prints a compact summary
+    block every STATS_EVERY phrases — useful for monitoring harmonic
+    mode distribution, scale tracking, and arc progress at a glance.
+    """
+
+    def __init__(self, window: int = STATS_WINDOW):
+        self._total   = 0
+        self._harm    = deque(maxlen=window)
+        self._scale   = deque(maxlen=window)
+        self._contour = deque(maxlen=window)
+        self._stage   = deque(maxlen=window)
+
+    def record(self, params: dict):
+        self._total += 1
+        self._harm.append(params.get("harmonic_mode", "?"))
+        self._scale.append(params.get("scale_source",  "arc"))
+        self._contour.append(params.get("contour_target", "?"))
+        self._stage.append(params.get("stage", "?"))
+
+    def should_print(self) -> bool:
+        return self._total > 0 and self._total % STATS_EVERY == 0
+
+    def print_summary(self, elapsed_sec: float):
+        mins  = int(elapsed_sec // 60)
+        secs  = int(elapsed_sec % 60)
+        n     = len(self._harm)
+        width = 60
+
+        def fmt(d: deque) -> str:
+            return "  ".join(f"{k}:{v}" for k, v in Counter(d).most_common())
+
+        header = f"── last {n} phrases  t={mins}:{secs:02d}  phrase #{self._total} "
+        print(header.ljust(width, "─"))
+        print(f"  harm    {fmt(self._harm)}")
+        print(f"  scale   {fmt(self._scale)}")
+        print(f"  contour {fmt(self._contour)}")
+        print(f"  stage   {fmt(self._stage)}")
+        print("─" * width)
 
 
 def main():
@@ -78,6 +127,7 @@ def main():
     _running  = threading.Event()
     _running.set()
     _sax_lock = threading.Lock()   # one sax phrase at a time
+    _stats    = _PhraseStats()
 
     # ------------------------------------------------------------------
     # Bass phrase handler (reactive path)
@@ -156,6 +206,10 @@ def main():
             )
 
             notes_out = notes   # capture after successful play
+
+            _stats.record(params)
+            if _stats.should_print():
+                _stats.print_summary(arc.elapsed())
 
         finally:
             arc.on_sax_played()
