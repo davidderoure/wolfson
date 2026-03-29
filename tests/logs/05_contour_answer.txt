@@ -6,6 +6,7 @@ Description: Descending phrase ending on a low note. Should be classified as 'an
 
 Bass phrase:
   Pitches:    E4 C4 A3 G3 E3 C3
+  Tempo:      120 BPM
   Vel:        80
   Duration:   2.92s
 
@@ -28,5 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  8
-  Pitches:  F#3 F#5 G4 C5 F5 G5 F#5 F5
-  Dur (b):  0.70 0.95 0.95 0.70 0.81 0.38 0.95 1.28
+  Pitches:  C4 Bb3 C4 B3 Bb3 Ab3 A3 Bb3
+  Dur (b):  1.28 0.95 0.70 0.44 1.49 0.70 0.33 0.60
+  Dur (s):  0.64 0.47 0.35 0.22 0.75 0.35 0.16 0.30

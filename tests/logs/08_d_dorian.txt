@@ -6,6 +6,7 @@ Description: Phrase over Dm7 with D Dorian scale pitch bias active. Sax should f
 
 Bass phrase:
   Pitches:    D3 E3 F3 G3 A3 B3 C4 D4
+  Tempo:      120 BPM
   Vel:        80
   Duration:   3.92s
 
@@ -28,5 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  8
-  Pitches:  A3 B4 A4 G4 F4 D4 F4 D4
-  Dur (b):  0.33 1.28 0.33 0.38 0.38 0.44 0.95 0.38
+  Pitches:  E3 F3 D4 D4 A3 G3 E4 A4
+  Dur (b):  0.81 0.60 0.81 1.49 1.10 0.60 0.28 0.70
+  Dur (s):  0.41 0.30 0.41 0.75 0.55 0.30 0.14 0.35

@@ -6,6 +6,7 @@ Description: Swung 8th notes (2:1 long-short ratio per beat). Swing ratio should
 
 Bass phrase:
   Pitches:    A3 C4 A3 G3 E3 D3 E3 G3
+  Tempo:      120 BPM
   Vel:        80
   Duration:   1.97s
 
@@ -28,5 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  8
-  Pitches:  F3 F#3 A3 F4 E4 D4 E4 G4
-  Dur (b):  0.60 0.52 0.52 0.52 0.38 0.44 0.24 0.52
+  Pitches:  F3 E3 G3 A3 D4 Eb4 D4 F#4
+  Dur (b):  0.95 0.60 0.28 0.28 0.38 0.24 0.52 0.38
+  Dur (s):  0.47 0.30 0.14 0.14 0.19 0.12 0.26 0.19

@@ -6,6 +6,7 @@ Description: Same phrase at high velocity (vel=100). Sax should respond loudly.
 
 Bass phrase:
   Pitches:    E3 F3 G3 A3 C4 D4
+  Tempo:      120 BPM
   Vel:        100
   Duration:   2.92s
 
@@ -28,5 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  8
-  Pitches:  D5 D5 E4 D5 D5 C#5 Ab4 Bb4
-  Dur (b):  0.60 0.60 1.28 1.28 1.74 0.70 1.28 1.74
+  Pitches:  D5 B4 D5 B4 Bb4 G4 F4 B4
+  Dur (b):  0.81 0.70 0.70 0.70 0.70 0.95 0.60 1.49
+  Dur (s):  0.41 0.35 0.35 0.35 0.35 0.47 0.30 0.75

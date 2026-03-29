@@ -1,19 +1,19 @@
 ======================================================================
-  Contour — question phrase
+  Tempo — 90 BPM (slow swing)
 ======================================================================
 
-Description: Ascending phrase ending on a high note. Should be classified as 'question'; sax responds with descending 'answer' contour.
+Description: Same ascending motif at 90 BPM. Each beat is 0.67s; the phrase spans 4s.
 
 Bass phrase:
-  Pitches:    C3 E3 G3 A3 C4 E4
-  Tempo:      120 BPM
+  Pitches:    E3 F3 G3 A3 C4 D4
+  Tempo:      90 BPM
   Vel:        80
-  Duration:   2.92s
+  Duration:   3.90s
 
 Analysis:
-  note_density:    2.05 notes/sec
-  ambitus:         16 semitones
-  contour_slope:   +3.03
+  note_density:    1.54 notes/sec
+  ambitus:         10 semitones
+  contour_slope:   +2.09
   rhetorical_type: question
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   80
@@ -29,6 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  8
-  Pitches:  Eb5 C#5 C5 A4 C5 B4 G4 Eb4
-  Dur (b):  0.60 0.95 0.95 0.33 0.81 1.28 0.52 2.02
-  Dur (s):  0.30 0.47 0.47 0.16 0.41 0.64 0.26 1.01
+  Pitches:  G5 G5 C#5 G4 Bb4 D5 Bb4 B4
+  Dur (b):  0.81 0.95 0.38 0.38 0.60 0.70 0.33 0.60
+  Dur (s):  0.54 0.63 0.25 0.25 0.40 0.47 0.22 0.40

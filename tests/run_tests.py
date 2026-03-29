@@ -9,9 +9,7 @@ Usage:
     python tests/run_tests.py
 
 Outputs:
-    tests/logs/01_basic_response.txt
-    tests/logs/02_dynamics_soft.txt
-    ...
+    tests/logs/01_basic_response.txt  ...  tests/logs/14_tempo_200bpm.txt
     tests/demo.mid
 """
 
@@ -31,14 +29,8 @@ from config import GENERATION_TEMPERATURE
 LOGS_DIR  = Path(__file__).parent / "logs"
 DEMO_MIDI = Path(__file__).parent / "demo.mid"
 
-BPM      = 120.0
-BEAT_DUR = 60.0 / BPM        # 0.5 s per beat at 120 BPM
-GAP_SEC  = BEAT_DUR * 2      # silence between tests in demo MIDI
-
-
-# ---------------------------------------------------------------------------
-# Note/phrase helpers
-# ---------------------------------------------------------------------------
+DEFAULT_BPM = 120.0
+GAP_BEATS   = 2           # silence between segments in demo MIDI (in beats)
 
 MIDI_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 ROOT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
@@ -48,21 +40,26 @@ def midi_name(pitch: int) -> str:
     return f"{MIDI_NAMES[pitch % 12]}{(pitch // 12) - 1}"
 
 
-def make_phrase(pitches, beat_durs, velocity=80):
+# ---------------------------------------------------------------------------
+# Phrase builder — bpm-aware
+# ---------------------------------------------------------------------------
+
+def make_phrase(pitches, beat_durs, velocity=80, bpm=DEFAULT_BPM):
     """
-    Build a phrase list from pitches and beat-relative durations.
-    IOI between notes equals beat_dur * BEAT_DUR (legato-ish).
+    Build a phrase list from pitches and beat-relative durations at a given BPM.
+    IOI between notes equals beat_dur in seconds.
     """
+    beat_dur = 60.0 / bpm
     notes = []
     t = 0.0
     for pitch, beats in zip(pitches, beat_durs):
-        dur_sec = beats * BEAT_DUR
+        dur_sec = beats * beat_dur
         notes.append({
             "pitch":        pitch,
             "onset":        t,
             "offset":       t + dur_sec * 0.85,
             "velocity":     velocity,
-            "beat_dur_sec": BEAT_DUR,
+            "beat_dur_sec": beat_dur,
         })
         t += dur_sec
     return notes
@@ -79,13 +76,15 @@ def _scale_label(params: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Single-test runner
+# Single-test runner — bpm-aware
 # ---------------------------------------------------------------------------
 
-def run_test(generator, title, bass_phrase, params, description=""):
+def run_test(generator, title, bass_phrase, params, description="", bpm=DEFAULT_BPM):
     """
-    Analyse the bass phrase, generate a sax response, return (log_text, response).
+    Analyse the bass phrase, generate a sax response.
+    Returns (log_text, response, features, sax_velocity).
     """
+    beat_dur = 60.0 / bpm
     features = analyze(bass_phrase)
 
     if "contour_target" not in params:
@@ -95,7 +94,7 @@ def run_test(generator, title, bass_phrase, params, description=""):
 
     response = generator.generate(
         seed_phrase          = bass_phrase,
-        tempo_bpm            = BPM,
+        tempo_bpm            = bpm,
         n_notes              = params.get("n_notes", 8),
         temperature          = params.get("temperature", GENERATION_TEMPERATURE),
         contour_target       = params.get("contour_target", "neutral"),
@@ -106,15 +105,20 @@ def run_test(generator, title, bass_phrase, params, description=""):
 
     sax_velocity = min(110, max(40, features["mean_velocity"]))
 
+    # Sax duration in seconds at this tempo
+    sax_dur_s = [f"{n['duration_beats'] * beat_dur:.2f}" for n in response]
+
     lines = []
     if description:
         lines += [f"Description: {description}", ""]
 
+    bass_dur_sec = bass_phrase[-1]["offset"] - bass_phrase[0]["onset"]
     lines += [
         "Bass phrase:",
         f"  Pitches:    {' '.join(midi_name(n['pitch']) for n in bass_phrase)}",
+        f"  Tempo:      {bpm:.0f} BPM",
         f"  Vel:        {bass_phrase[0]['velocity']}",
-        f"  Duration:   {bass_phrase[-1]['offset'] - bass_phrase[0]['onset']:.2f}s",
+        f"  Duration:   {bass_dur_sec:.2f}s",
         "",
         "Analysis:",
         f"  note_density:    {features['note_density']:.2f} notes/sec",
@@ -137,31 +141,36 @@ def run_test(generator, title, bass_phrase, params, description=""):
         f"  n notes:  {len(response)}",
         f"  Pitches:  {' '.join(midi_name(n['pitch']) for n in response)}",
         "  Dur (b):  " + ' '.join(f"{n['duration_beats']:.2f}" for n in response),
+        "  Dur (s):  " + ' '.join(sax_dur_s),
     ]
 
     return "\n".join(lines), response, features, sax_velocity
 
 
 # ---------------------------------------------------------------------------
-# Demo MIDI builder
+# Demo MIDI builder — per-segment BPM
 # ---------------------------------------------------------------------------
 
 def build_demo_midi(segments):
     """
     Build a two-track MIDI: bass (track 0) + sax (track 1).
 
-    segments: list of (bass_phrase, sax_response, velocity, label)
+    segments: list of (bass_phrase, sax_response, sax_velocity, label, bpm)
+
+    Note timings are in wall-clock seconds so each segment plays at its own
+    tempo regardless of the MIDI file's global tempo marker.
     """
-    midi     = pretty_midi.PrettyMIDI(initial_tempo=BPM)
+    midi     = pretty_midi.PrettyMIDI(initial_tempo=DEFAULT_BPM)
     bass_ins = pretty_midi.Instrument(program=33, name="Bass")
     sax_ins  = pretty_midi.Instrument(program=65, name="Alto Sax")
 
-    cursor = BEAT_DUR * 2   # 2-beat lead-in
+    cursor = 60.0 / DEFAULT_BPM * 2   # 2-beat lead-in at default tempo
 
-    for bass_phrase, sax_response, sax_velocity, _label in segments:
+    for bass_phrase, sax_response, sax_velocity, _label, bpm in segments:
+        beat_dur     = 60.0 / bpm
         phrase_start = cursor
 
-        # Write bass notes
+        # Bass notes
         for n in bass_phrase:
             start = phrase_start + (n["onset"] - bass_phrase[0]["onset"])
             end   = phrase_start + (n["offset"] - bass_phrase[0]["onset"])
@@ -171,12 +180,12 @@ def build_demo_midi(segments):
             ))
 
         bass_dur = bass_phrase[-1]["offset"] - bass_phrase[0]["onset"]
-        cursor   = phrase_start + bass_dur + BEAT_DUR   # 1-beat gap to sax
+        cursor   = phrase_start + bass_dur + beat_dur   # 1-beat gap to sax
 
-        # Write sax notes
+        # Sax notes
         sax_start = cursor
         for n in sax_response:
-            dur_sec = n["duration_beats"] * BEAT_DUR
+            dur_sec = n["duration_beats"] * beat_dur
             end_sec = sax_start + dur_sec * 0.85
             sax_ins.notes.append(pretty_midi.Note(
                 velocity=sax_velocity, pitch=n["pitch"],
@@ -184,8 +193,8 @@ def build_demo_midi(segments):
             ))
             sax_start += dur_sec
 
-        sax_dur = sum(n["duration_beats"] * BEAT_DUR for n in sax_response)
-        cursor  = cursor + sax_dur + GAP_SEC
+        sax_dur = sum(n["duration_beats"] * beat_dur for n in sax_response)
+        cursor  = cursor + sax_dur + beat_dur * GAP_BEATS
 
     midi.instruments.append(bass_ins)
     midi.instruments.append(sax_ins)
@@ -201,15 +210,20 @@ def define_tests():
     G7   = parse_chord("G7")
     Cmaj = parse_chord("C")
 
+    # Shared ascending motif used by multiple tests
+    MOTIF_PITCHES   = [52, 53, 55, 57, 60, 62]
+    MOTIF_BEAT_DURS = [1,  1,  1,  1,  1,  1 ]
+
     return [
         # ── 1 ─────────────────────────────────────────────────────────────
         {
             "name":        "01_basic_response",
             "title":       "Basic call-response",
             "description": "A simple ascending phrase. Tests that the system responds musically.",
-            "pitches":     [52, 53, 55, 57, 60, 62],
-            "beat_durs":   [1,  1,  1,  1,  1,  1 ],
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
             "velocity":    80,
+            "bpm":         120.0,
             "params":      {},
         },
         # ── 2 ─────────────────────────────────────────────────────────────
@@ -217,9 +231,10 @@ def define_tests():
             "name":        "02_dynamics_soft",
             "title":       "Dynamics — soft",
             "description": "Same phrase at low velocity (vel=30). Sax should respond softly.",
-            "pitches":     [52, 53, 55, 57, 60, 62],
-            "beat_durs":   [1,  1,  1,  1,  1,  1 ],
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
             "velocity":    30,
+            "bpm":         120.0,
             "params":      {},
         },
         # ── 3 ─────────────────────────────────────────────────────────────
@@ -227,9 +242,10 @@ def define_tests():
             "name":        "03_dynamics_loud",
             "title":       "Dynamics — loud",
             "description": "Same phrase at high velocity (vel=100). Sax should respond loudly.",
-            "pitches":     [52, 53, 55, 57, 60, 62],
-            "beat_durs":   [1,  1,  1,  1,  1,  1 ],
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
             "velocity":    100,
+            "bpm":         120.0,
             "params":      {},
         },
         # ── 4 ─────────────────────────────────────────────────────────────
@@ -243,6 +259,7 @@ def define_tests():
             "pitches":     [48, 52, 55, 57, 60, 64],
             "beat_durs":   [1,  1,  1,  1,  1,  1 ],
             "velocity":    80,
+            "bpm":         120.0,
             "params":      {},
         },
         # ── 5 ─────────────────────────────────────────────────────────────
@@ -256,6 +273,7 @@ def define_tests():
             "pitches":     [64, 60, 57, 55, 52, 48],
             "beat_durs":   [1,  1,  1,  1,  1,  1 ],
             "velocity":    80,
+            "bpm":         120.0,
             "params":      {},
         },
         # ── 6 ─────────────────────────────────────────────────────────────
@@ -269,6 +287,7 @@ def define_tests():
             "pitches":     [57, 60, 57, 55, 52, 50, 52, 55],
             "beat_durs":   [2/3, 1/3, 2/3, 1/3, 2/3, 1/3, 2/3, 1/3],
             "velocity":    80,
+            "bpm":         120.0,
             "params":      {},
         },
         # ── 7 ─────────────────────────────────────────────────────────────
@@ -282,7 +301,8 @@ def define_tests():
             "pitches":     [57, 60, 57, 55, 52, 50, 52, 55],
             "beat_durs":   [1,  1,  1,  1,  1,  1,  1,  1 ],
             "velocity":    80,
-            "params":      {},   # swing_bias auto-set from analysis
+            "bpm":         120.0,
+            "params":      {},
         },
         # ── 8 ─────────────────────────────────────────────────────────────
         {
@@ -292,9 +312,10 @@ def define_tests():
                 "Phrase over Dm7 with D Dorian scale pitch bias active. "
                 "Sax should favour D, E, F, G, A, B, C scale tones."
             ),
-            "pitches":     [50, 52, 53, 55, 57, 59, 60, 62],  # D E F G A B C D
+            "pitches":     [50, 52, 53, 55, 57, 59, 60, 62],
             "beat_durs":   [1,  1,  1,  1,  1,  1,  1,  1 ],
             "velocity":    80,
+            "bpm":         120.0,
             "params":      {
                 "chord_idx":           Dm7,
                 "scale_pitch_classes": scale_pitch_classes(2, "dorian"),
@@ -309,9 +330,10 @@ def define_tests():
                 "Dm7 (Dorian), G7 (Mixolydian), Cmaj (Ionian). "
                 "Demonstrates chord-conditioned harmonic colour changing across the progression."
             ),
-            "pitches":     [52, 53, 55, 57, 60, 62],
-            "beat_durs":   [1,  1,  1,  1,  1,  1 ],
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
             "velocity":    80,
+            "bpm":         120.0,
             "params":      {
                 "chord_idx":           Dm7,
                 "scale_pitch_classes": scale_pitch_classes(2, "dorian"),
@@ -332,7 +354,68 @@ def define_tests():
             "pitches":     [52, 60],
             "beat_durs":   [2,  2 ],
             "velocity":    55,
+            "bpm":         120.0,
             "params":      {"n_notes": 12},
+        },
+        # ── 11–14: Tempo variation ─────────────────────────────────────────
+        # Same ascending motif at four tempos. The token encoding is beat-
+        # relative so phrase shape should be similar, but the LSTM may prefer
+        # different note densities and durations at different tempos since the
+        # training data spans a broad tempo range.
+        {
+            "name":        "11_tempo_60bpm",
+            "title":       "Tempo — 60 BPM (ballad)",
+            "description": (
+                "Same ascending motif at 60 BPM. Each beat is 1.0s; the phrase "
+                "spans 6s. Compare sax response shape and note density with tests "
+                "01/12/13/14 to see if tempo influences phrase character."
+            ),
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
+            "velocity":    80,
+            "bpm":         60.0,
+            "params":      {},
+        },
+        {
+            "name":        "12_tempo_90bpm",
+            "title":       "Tempo — 90 BPM (slow swing)",
+            "description": (
+                "Same ascending motif at 90 BPM. Each beat is 0.67s; the phrase "
+                "spans 4s."
+            ),
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
+            "velocity":    80,
+            "bpm":         90.0,
+            "params":      {},
+        },
+        {
+            "name":        "13_tempo_160bpm",
+            "title":       "Tempo — 160 BPM (up-tempo)",
+            "description": (
+                "Same ascending motif at 160 BPM. Each beat is 0.375s; the phrase "
+                "spans 2.25s. At this speed the minimum duration floor (0.2 beats) "
+                "may constrain the response."
+            ),
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
+            "velocity":    80,
+            "bpm":         160.0,
+            "params":      {},
+        },
+        {
+            "name":        "14_tempo_200bpm",
+            "title":       "Tempo — 200 BPM (very fast)",
+            "description": (
+                "Same ascending motif at 200 BPM. Each beat is 0.3s; the phrase "
+                "spans 1.8s. Tests how the system handles very fast tempos where "
+                "the beat estimator may struggle with subdivision ambiguity."
+            ),
+            "pitches":     MOTIF_PITCHES,
+            "beat_durs":   MOTIF_BEAT_DURS,
+            "velocity":    80,
+            "bpm":         200.0,
+            "params":      {},
         },
     ]
 
@@ -349,19 +432,19 @@ def main():
     print()
 
     tests    = define_tests()
-    segments = []   # (bass_phrase, sax_response, sax_velocity, label) for MIDI
+    segments = []   # (bass_phrase, sax_response, sax_velocity, label, bpm)
 
     for test in tests:
+        bpm = test.get("bpm", DEFAULT_BPM)
         print(f"  [{test['name']}]  {test['title']}")
 
-        bass_phrase = make_phrase(test["pitches"], test["beat_durs"], test["velocity"])
+        bass_phrase = make_phrase(test["pitches"], test["beat_durs"], test["velocity"], bpm)
         params      = test["params"].copy()
 
         log_text, response, features, sax_velocity = run_test(
-            generator, test["title"], bass_phrase, params, test["description"]
+            generator, test["title"], bass_phrase, params, test["description"], bpm
         )
 
-        # Build log file
         header = (
             "=" * 70 + "\n"
             f"  {test['title']}\n"
@@ -371,19 +454,18 @@ def main():
         # Handle progression sub-tests (ii-V-I)
         if "progression" in test:
             prog_lines = [header, log_text, ""]
-            prog_lines.append(f"  — Dm7 response above —")
+            prog_lines.append("  — Dm7 response above —")
             prog_lines.append("")
-            segments.append((bass_phrase, response, sax_velocity, f"{test['name']} Dm7"))
+            segments.append((bass_phrase, response, sax_velocity, f"{test['name']} Dm7", bpm))
 
             for prog_params_extra in test["progression"]:
                 prog_params = params.copy()
                 prog_params.update(prog_params_extra)
-                # carry over contour/swing from first run
                 prog_params.setdefault("contour_target", params.get("contour_target", "neutral"))
                 prog_params.setdefault("swing_bias",     params.get("swing_bias",     0.0))
 
                 _, prog_response, _, _ = run_test(
-                    generator, test["title"], bass_phrase, prog_params
+                    generator, test["title"], bass_phrase, prog_params, bpm=bpm
                 )
                 chord_name = chord_index_to_name(prog_params["chord_idx"])
                 root = chord_root(prog_params["chord_idx"])
@@ -396,7 +478,7 @@ def main():
                     f"  Dur(b):  {dur_str}\n"
                 )
                 segments.append((bass_phrase, prog_response, sax_velocity,
-                                  f"{test['name']} {chord_name}"))
+                                  f"{test['name']} {chord_name}", bpm))
 
             log_path = LOGS_DIR / f"{test['name']}.txt"
             log_path.write_text("\n".join(prog_lines))
@@ -404,11 +486,10 @@ def main():
         else:
             log_path = LOGS_DIR / f"{test['name']}.txt"
             log_path.write_text(header + log_text + "\n")
-            segments.append((bass_phrase, response, sax_velocity, test["name"]))
+            segments.append((bass_phrase, response, sax_velocity, test["name"], bpm))
 
         print(f"         → {log_path}")
 
-    # Build demo MIDI
     print()
     build_demo_midi(segments)
     print(f"  → {DEMO_MIDI}")

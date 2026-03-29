@@ -6,6 +6,7 @@ Description: Two widely-spaced notes at low velocity. High sparsity score; sax r
 
 Bass phrase:
   Pitches:    E3 C4
+  Tempo:      120 BPM
   Vel:        55
   Duration:   1.85s
 
@@ -28,5 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  12
-  Pitches:  B3 Ab3 E3 F#3 F3 F#3 G3 Ab3 B3 B3 Ab3 F#3
-  Dur (b):  0.81 0.60 0.70 0.70 0.60 0.70 1.28 0.70 0.95 1.49 0.60 0.20
+  Pitches:  F3 B3 C4 A3 Bb3 B3 F3 E3 G3 C4 Eb4 E4
+  Dur (b):  1.74 2.74 0.70 0.70 0.52 0.95 0.52 0.95 0.95 1.74 0.70 0.60
+  Dur (s):  0.87 1.37 0.35 0.35 0.26 0.47 0.26 0.47 0.47 0.87 0.35 0.30

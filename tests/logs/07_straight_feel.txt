@@ -6,6 +6,7 @@ Description: Even quarter notes (straight feel). Swing ratio ~1.0; classified as
 
 Bass phrase:
   Pitches:    A3 C4 A3 G3 E3 D3 E3 G3
+  Tempo:      120 BPM
   Vel:        80
   Duration:   3.92s
 
@@ -28,5 +29,6 @@ Generation parameters:
 
 Sax response:
   n notes:  8
-  Pitches:  F3 F#3 G3 A3 G3 F#3 G3 G3
-  Dur (b):  0.60 0.33 0.33 0.38 0.95 0.81 0.60 0.28
+  Pitches:  Bb3 D4 C4 A3 F3 G3 B3 A3
+  Dur (b):  1.10 0.70 0.28 0.38 1.74 0.60 0.60 0.60
+  Dur (s):  0.55 0.35 0.14 0.19 0.87 0.30 0.30 0.30
