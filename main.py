@@ -40,7 +40,7 @@ from config import DEFAULT_INSTRUMENT, TEMPO_HINT_BPM
 PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
 
 # Self-play: brief silence between phrases (seconds) — musical breathing room
-SELF_PLAY_PHRASE_GAP = 0.15
+SELF_PLAY_PHRASE_GAP = 0.05
 
 # Self-play seed: D minor pentatonic opening motif (pitch, beat-duration pairs)
 # Gives the LSTM something musical to respond to on the very first exchange.
@@ -112,6 +112,17 @@ def main():
                 scale_pitch_classes = params.get("scale_pitch_classes"),
             )
             if not notes:
+                # Model generated nothing (END_TOKEN sampled immediately).
+                # In self-play, re-inject the seed so the loop doesn't stall.
+                if self_play and _running.is_set():
+                    beat_dur_sec = beats.beat_duration
+                    _schedule_feedback(
+                        [{"pitch":          n["pitch"],
+                          "duration_beats": (n["offset"] - n["onset"])
+                                            / beat_dur_sec}
+                         for n in params["seed"]],
+                        beat_dur_sec,
+                    )
                 return
 
             beat_dur_sec  = beats.beat_duration
@@ -204,7 +215,7 @@ def main():
         # Seed the loop with an opening phrase in a background thread
         # so main() is not blocked before the KeyboardInterrupt handler.
         def _bootstrap():
-            time.sleep(0.5)   # allow arc to initialise
+            time.sleep(0.2)   # allow arc to initialise
             if not _running.is_set():
                 return
             beat_dur = 60.0 / initial_bpm
