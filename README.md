@@ -18,9 +18,15 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                           (arc, leadership,
                                            proactive mode)
                                                  │
+                                        HarmonyController
+                                    (mode, progression, pedal,
+                                     tritone substitution)
+                                                 │
                                           PhraseGenerator
-                                       (LSTM + chord conditioning
-                                        + contour steering)
+                                    (LSTM + chord conditioning
+                                     + scale pitch bias
+                                     + contour steering
+                                     + swing/triplet bias)
                                                  │
                                            MidiOutput ──► Synth (sax voice)
 ```
@@ -33,23 +39,36 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Leadership and role swapping** — the system tracks who is leading at each moment. Sparse bass playing (low density, small range) signals the bassist is comping; the sax takes the initiative. Dense melodic bass signals the sax should respond. Leadership shifts deliberately over the arc.
 
-**Contour steering** — soft logit biases applied to pitch tokens in the final portion of each generated phrase guide its ending upward or downward as needed.
+**Contour steering** — soft logit biases on pitch tokens in the final portion of each generated phrase guide its ending upward or downward as needed.
 
-**Chord conditioning** — the LSTM is trained with chord context from the WJD beats table (49-token chord vocabulary: 12 roots × 4 quality classes + NC). At runtime, chord index can be provided from a chart; defaults to NC (no-chord) if absent — the model degrades gracefully.
+**Chord conditioning** — the LSTM is trained with chord context from the WJD beats table (49-token chord vocabulary: 12 roots × 4 quality classes + NC). At runtime the `HarmonyController` issues a chord index each phrase; the model degrades gracefully to NC if no chord is supplied.
 
-**Live tempo tracking** — a `BeatEstimator` infers BPM from inter-onset intervals in the bass line using IOI histogram autocorrelation. Generated sax phrases play back in time with the bassist's actual tempo. No click track or advance setup required.
+**Harmonic modes** — the `HarmonyController` operates in one of four modes, selected automatically by the performance stage:
+
+| Mode | Behaviour |
+|------|-----------|
+| `free` | No harmonic steering; chromatic scale bias (sparse stage) |
+| `modal` | Root + mode (e.g. D Dorian) held for N phrases, then drifts by a semitone; used in building and recapitulation |
+| `progression` | Steps through a chord progression one chord per phrase — ii-V-I, VI-II-V-I, I-VI-II-V, or 12-bar blues; tritone substitution on V7 chords (~35%); used at peak |
+| `pedal` | Fixed bass pedal tone with cycling upper harmony (i → bVII7 → i → V7); used in resolution |
+
+**Scale pitch bias** — positive logit bias is added to pitch tokens whose pitch class belongs to the current chord's scale or mode. Non-scale tones are not penalised, so chromatic passing notes remain available.
+
+**Swing / triplet feel** — the system detects whether the bass is playing straight or swung (from consecutive IOI ratios). A straight bass call gets a triplet-grid duration bias in the response, pushing the sax toward the 12/8 feel and creating rhythmic contrast. A swinging bass gets no bias — the LSTM's learned distribution handles it.
+
+**Live tempo tracking** — a `BeatEstimator` infers BPM from inter-onset intervals in the bass line. Generated sax phrases play back in time with the bassist's actual tempo. No click track or advance setup required.
 
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
 
 ### Performance arc
 
-| Time | Stage | Character |
-|------|-------|-----------|
-| 0:00–1:00 | sparse | Short exchanges; bass leads; establish motifs |
-| 1:00–2:30 | building | Longer phrases; sax begins recalling and initiating |
-| 2:30–3:30 | peak | Maximum density; sax leads; adventurous generation |
-| 3:30–4:30 | recapitulation | Return to early phrases, transformed; role reversal |
-| 4:30–5:00 | resolution | Sax thins and resolves; plays the last phrase |
+| Time | Stage | Harmonic mode | Character |
+|------|-------|---------------|-----------|
+| 0:00–1:00 | sparse | free | Short exchanges; bass leads; establish motifs |
+| 1:00–2:30 | building | modal | Longer phrases; settle into a mode; sax begins recalling |
+| 2:30–3:30 | peak | progression | Maximum density; active chord motion; tritone subs |
+| 3:30–4:30 | recapitulation | modal | Return to early phrases; modal feel restored |
+| 4:30–5:00 | resolution | pedal | Sax thins and resolves over a pedal tone; plays the last phrase |
 
 ## Training data
 
@@ -124,33 +143,62 @@ Best model saved to `models/sax_best.pt`.
 python main.py
 ```
 
+## Testing individual features
+
+`demo.py` lets you test any single feature in isolation without the 5-minute arc. Each bass phrase you play triggers one sax response using fixed, explicit parameters.
+
+```bash
+python demo.py --demo scale         # D Dorian scale pitch bias
+python demo.py --demo swing         # triplet-grid response to your playing
+python demo.py --demo straight      # no swing bias (compare with above)
+python demo.py --demo contour       # alternates ascending / descending endings
+python demo.py --demo progression   # ii-V-I in C, advancing one chord per phrase
+python demo.py --demo blues         # 12-bar blues
+python demo.py --demo tritone       # V7 always replaced by tritone sub (bII7)
+python demo.py --demo pedal         # pedal tone with cycling upper harmony
+python demo.py --demo free          # chromatic baseline
+```
+
+Options (combine with any demo):
+
+```
+--root NOTE    tonic / modal root, e.g. --root Bb   (default: D)
+--temp FLOAT   generation temperature                (default: 0.9)
+--notes INT    max notes per sax response            (default: 12)
+```
+
+The console prints the chord name, scale size, swing bias, detected bass feel, and contour for each response.
+
 ## Project structure
 
 ```
 wolfson/
-├── main.py                       Entry point
+├── main.py                       Entry point (full 5-minute performance)
+├── demo.py                       Feature-focused testing without the arc
 ├── config.py                     All tunable parameters
 ├── wolfson_train.ipynb           Google Colab training notebook
 ├── requirements.txt
 ├── input/
 │   ├── midi_listener.py          MIDI input, note events
 │   ├── phrase_detector.py        Segments note stream into phrases
-│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type
+│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing ratio
 │   └── beat_estimator.py         Live tempo estimation from bass onsets
 ├── memory/
 │   └── phrase_memory.py          Stores phrases for recall and development
 ├── generator/
 │   ├── lstm_model.py             LSTM with chord conditioning
-│   ├── phrase_generator.py       Seeds LSTM, contour steering, sampling
+│   ├── phrase_generator.py       Seeds LSTM; contour, scale, and swing steering
 │   └── train.py                  Training script
 ├── controller/
-│   └── arc_controller.py         Arc, leadership, proactive mode
+│   ├── arc_controller.py         Arc, leadership, proactive mode
+│   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
 │   └── midi_output.py            Per-note MIDI playback with articulation
 └── data/
     ├── encoding.py               Pitch+duration token encoding
-    ├── chords.py                 Chord parsing and vocabulary
-    ├── instruments.py            Instrument family definitions
+    ├── chords.py                 Chord parsing and 49-token vocabulary
+    ├── scales.py                 Mode interval tables and scale pitch-class helpers
+    ├── instruments.py            Instrument family definitions and pitch ranges
     └── prepare.py                WJD data preparation script
 ```
 
