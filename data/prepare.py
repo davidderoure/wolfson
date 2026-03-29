@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import bisect
 import json
 import re
 import sqlite3
@@ -99,6 +100,10 @@ def load_solos(db: sqlite3.Connection, instrument_codes: list[str]) -> list[dict
     """
     Return a list of solos, each a dict with metadata and a sorted list of notes.
     Notes have: pitch (int), onset (float, sec), offset (float, sec).
+
+    Chord assignment uses two bulk queries per solo (notes + beats) and bisect
+    rather than a correlated subquery per note, which is ~100x faster on the
+    full sax dataset (~106k notes).
     """
     cur = db.cursor()
     placeholders = ",".join("?" * len(instrument_codes))
@@ -112,27 +117,50 @@ def load_solos(db: sqlite3.Connection, instrument_codes: list[str]) -> list[dict
     """, instrument_codes)
     rows = cur.fetchall()
 
+    # Bulk-fetch all beats (chord changes) for matching solos in one query,
+    # keyed by melid so we can look them up per solo without extra round-trips.
+    melids = [r[0] for r in rows]
+    mel_placeholders = ",".join("?" * len(melids))
+    cur.execute(f"""
+        SELECT melid, onset, chord
+        FROM beats
+        WHERE melid IN ({mel_placeholders})
+        ORDER BY melid, onset
+    """, melids)
+    beats_by_melid: dict[int, tuple[list, list]] = {}
+    for melid, onset, chord in cur.fetchall():
+        if melid not in beats_by_melid:
+            beats_by_melid[melid] = ([], [])
+        beats_by_melid[melid][0].append(float(onset))
+        beats_by_melid[melid][1].append(chord)
+
     solos = []
     for melid, title, performer, instrument, avgtempo in rows:
         tempo_bpm = float(avgtempo) if avgtempo else 120.0
 
-        # Fetch notes with per-note beat duration and the chord active at each onset.
-        # The subquery picks the most recent chord change at or before each note.
         cur.execute("""
-            SELECT m.pitch, m.onset, m.duration, m.beatdur,
-                   (SELECT b.chord FROM beats b
-                    WHERE b.melid = m.melid AND b.onset <= m.onset
-                    ORDER BY b.onset DESC LIMIT 1) AS chord
-            FROM melody m
-            WHERE m.melid = ?
-            ORDER BY m.onset
+            SELECT pitch, onset, duration, beatdur
+            FROM melody
+            WHERE melid = ?
+            ORDER BY onset
         """, (melid,))
 
+        beat_onsets, beat_chords = beats_by_melid.get(melid, ([], []))
+
         notes = []
-        for pitch, onset, duration, beatdur, chord_str in cur.fetchall():
+        for pitch, onset, duration, beatdur in cur.fetchall():
             if pitch is None or onset is None or duration is None:
                 continue
             beat_dur_sec = float(beatdur) if beatdur else (60.0 / tempo_bpm)
+
+            # Find the most recent chord change at or before this note's onset
+            # using bisect — O(log n) per note instead of a subquery.
+            chord_str = None
+            if beat_onsets:
+                idx = bisect.bisect_right(beat_onsets, float(onset)) - 1
+                if idx >= 0:
+                    chord_str = beat_chords[idx]
+
             notes.append({
                 "pitch":        int(round(float(pitch))),
                 "onset":        float(onset),
