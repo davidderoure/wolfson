@@ -70,6 +70,7 @@ def main():
                 temperature    = params["temperature"],
                 contour_target = params["contour_target"],
                 chord_idx      = params["chord_idx"],
+                swing_bias     = params.get("swing_bias", 0.0),
             )
             if not notes:
                 return

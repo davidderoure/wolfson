@@ -5,6 +5,9 @@ Key additions over the basic generator:
   - Chord conditioning: passes chord_idx at each timestep
   - Contour steering: soft bias on pitch logits in the final portion of a phrase
     to guide the phrase toward a target contour (ascending / descending / neutral)
+  - Swing/triplet bias: soft bias on duration logits toward the 12/8 triplet grid
+    (1/3, 2/3, 4/3, 2 beats), enabling rhythmic contrast when the bass plays
+    straight quarter notes — a 4-to-the-bar call gets a triplet-feel response
 """
 
 import sys
@@ -17,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.encoding import (
     phrase_to_tokens, phrase_to_chord_sequence, tokens_to_phrase,
-    END_TOKEN, VOCAB_SIZE, DUR_OFFSET, N_PITCHES, PITCH_MIN, PITCH_MAX,
+    END_TOKEN, VOCAB_SIZE, DUR_OFFSET, N_PITCHES, N_DUR_BUCKETS,
+    dur_to_token,
 )
 from data.chords import NC_INDEX, CHORD_VOCAB_SIZE
 from generator.lstm_model import PhraseModel
@@ -25,11 +29,15 @@ from config import MAX_GENERATED_NOTES, GENERATION_TEMPERATURE, DEFAULT_INSTRUME
 
 MODELS_DIR = Path(__file__).parent.parent / "models"
 
-# What fraction of the target phrase length is "early" (no contour steering)
-CONTOUR_STEER_ONSET = 0.6
+# Contour steering
+CONTOUR_STEER_ONSET   = 0.6   # fraction of phrase before steering kicks in
+CONTOUR_BIAS_STRENGTH = 1.5   # logit bias strength
 
-# Strength of contour bias added to pitch logits (in log-prob units)
-CONTOUR_BIAS_STRENGTH = 1.5
+# Swing/triplet bias
+# Triplet grid in beat-relative durations: 1/3, 2/3, 1, 4/3, 2 beats
+# These are the canonical durations of the 12/8 subdivision.
+TRIPLET_DUR_BEATS = [1/3, 2/3, 1.0, 4/3, 2.0]
+SWING_BIAS_STRENGTH = 1.2   # logit bias added to triplet-grid duration tokens
 
 
 class PhraseGenerator:
@@ -58,6 +66,7 @@ class PhraseGenerator:
         temperature:     float = None,
         contour_target:  str   = "neutral",   # 'ascending', 'descending', 'neutral'
         chord_idx:       int   = NC_INDEX,
+        swing_bias:      float = 0.0,         # 0 = no bias, 1 = full triplet-grid bias
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
@@ -66,6 +75,9 @@ class PhraseGenerator:
         tempo_bpm:      used only as fallback if notes lack beat_dur_sec
         contour_target: steer the ending of the phrase toward rising or falling pitch
         chord_idx:      current chord (NC_INDEX if unknown)
+        swing_bias:     0–1, strength of triplet-grid duration bias.
+                        Set to 1.0 when bass plays straight 4-to-bar to get a
+                        swung/triplet response; 0.0 for no rhythmic steering.
 
         Returns: list of {pitch, duration_beats} dicts
         """
@@ -107,6 +119,10 @@ class PhraseGenerator:
                         tok_logits, generated_tokens, contour_target
                     )
 
+                # Swing/triplet bias: applied to duration tokens throughout
+                if expecting == "duration" and swing_bias > 0.0:
+                    tok_logits = _apply_swing_bias(tok_logits, swing_bias)
+
                 probs = F.softmax(tok_logits, dim=-1)
                 token = torch.multinomial(probs, 1).item()
 
@@ -124,6 +140,29 @@ class PhraseGenerator:
                     expecting = "pitch"
 
         return tokens_to_phrase(generated_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Precompute triplet-grid duration token set
+# ---------------------------------------------------------------------------
+
+def _build_triplet_token_set() -> set[int]:
+    """
+    Return the set of duration token indices that correspond to the triplet
+    grid. We map each canonical triplet duration to its nearest bucket token,
+    then also include the immediately adjacent buckets for robustness.
+    """
+    tokens = set()
+    for dur_beats in TRIPLET_DUR_BEATS:
+        t = dur_to_token(dur_beats)
+        tokens.add(t)
+        if t - 1 >= DUR_OFFSET:
+            tokens.add(t - 1)
+        if t + 1 < DUR_OFFSET + N_DUR_BUCKETS:
+            tokens.add(t + 1)
+    return tokens
+
+_TRIPLET_TOKENS: set[int] = _build_triplet_token_set()
 
 
 # ---------------------------------------------------------------------------
@@ -178,4 +217,20 @@ def _apply_contour_bias(
         else:  # ascending
             bias[i] = distance * (CONTOUR_BIAS_STRENGTH / N_PITCHES)
 
+    return logits + bias
+
+
+def _apply_swing_bias(logits: torch.Tensor, strength: float) -> torch.Tensor:
+    """
+    Add a positive bias to duration tokens that fall on the triplet (12/8) grid.
+
+    strength 0.0 → no bias
+    strength 1.0 → SWING_BIAS_STRENGTH added to triplet-grid tokens
+
+    This nudges the model toward swung/triplet durations without forcing them —
+    the LSTM's learned distribution still dominates.
+    """
+    bias = torch.zeros(VOCAB_SIZE)
+    for t in _TRIPLET_TOKENS:
+        bias[t] = SWING_BIAS_STRENGTH * strength
     return logits + bias

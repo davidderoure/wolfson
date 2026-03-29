@@ -211,6 +211,11 @@ class ArcController:
             seed = phrase
             mode = "generate"
 
+        # Swing bias: complement the bass rhythmic feel.
+        # Straight/sparse bass → triplet response (contrast).
+        # Swinging bass       → no extra bias (model handles it naturally).
+        swing_bias = _compute_swing_bias(features, stage)
+
         return {
             "mode":           mode,
             "seed":           seed,
@@ -218,6 +223,7 @@ class ArcController:
             "temperature":    temperature,
             "contour_target": contour_target,
             "chord_idx":      self.current_chord_idx,
+            "swing_bias":     swing_bias,
             "stage":          stage,
             "leadership":     self._leadership,
         }
@@ -245,6 +251,29 @@ def _stage_temperature(stage: str) -> float:
         "recapitulation": 0.85,
         "resolution":     0.70,
     }.get(stage, 0.90)
+
+
+def _compute_swing_bias(features: dict, stage: str) -> float:
+    """
+    Decide how strongly to bias sax duration tokens toward the triplet grid.
+
+    Logic:
+      - Straight bass feel  → strong triplet bias (rhythmic contrast)
+      - Swinging bass feel  → no extra bias (LSTM already learned swing)
+      - Mixed/unknown       → light bias as default swing flavour
+      - Peak stage          → always some bias (maximum rhythmic interest)
+    """
+    feel = features.get("rhythmic_feel", "mixed")
+
+    if stage == "peak":
+        return 0.7   # always push triplet feel at peak intensity
+
+    if feel == "straight":
+        return 1.0   # maximum contrast: straight call → triplet response
+    elif feel == "swing":
+        return 0.0   # already swinging; let the model do its thing
+    else:
+        return 0.3   # light default swing flavour
 
 
 def _should_recall(stage: str, memory: PhraseMemory) -> bool:

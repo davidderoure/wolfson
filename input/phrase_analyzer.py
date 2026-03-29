@@ -5,6 +5,25 @@ Extracts features used by the arc controller to decide:
   - whether the bassist is leading or filling
   - what rhetorical type the phrase is (question vs answer)
   - what contour the sax response should aim for
+  - what rhythmic feel the phrase has (straight vs swing/triplet)
+
+Swing detection
+---------------
+Jazz swing is a 12/8 subdivision: the beat divides into three equal parts
+(triplet 8ths), and typical "swung 8th notes" are the 1st and 3rd of each
+triplet — giving a 2:1 long-short ratio within each beat.
+
+We detect this by examining consecutive IOI pairs (adjacent gaps between
+note onsets). In a swung phrase, pairs of IOIs that sum to approximately
+one beat will have a ratio close to 2:1. In a straight feel, the ratio is
+close to 1:1.
+
+`swing_ratio` in the returned feature dict:
+  ~1.0   straight feel (8th notes, quarter notes, no swing)
+  ~2.0   triplet swing (classic jazz swing 8ths)
+  ~0.5   reverse swing (unusual, short-long pattern)
+
+`rhythmic_feel` is a string label: 'swing', 'straight', or 'mixed'.
 """
 
 import math
@@ -14,6 +33,12 @@ import math
 SPARSE_DENSITY_THRESHOLD  = 2.5   # notes/sec below this → bassist is comping/filling
 MELODIC_AMBITUS_THRESHOLD = 7     # semitones; below this → phrase is not strongly directional
 QUESTION_END_THRESHOLD    = 0.15  # end pitch above this fraction of ambitus above mean → question
+
+# Swing detection
+BEAT_PAIR_TOLERANCE   = 0.15   # two IOIs are "a beat pair" if their sum is within
+                               # this fraction of the estimated beat duration
+SWING_RATIO_THRESHOLD = 1.5    # ratio > this → swing feel; < 1/this → reverse swing
+MIN_PAIRS_FOR_SWING   = 2      # need at least this many pairs to classify
 
 
 def analyze(phrase: list[dict]) -> dict:
@@ -59,6 +84,8 @@ def analyze(phrase: list[dict]) -> dict:
         pitches, mean_pitch, ambitus, end_pitch, end_direction, contour_slope
     )
 
+    swing_ratio, rhythmic_feel = _detect_swing(onsets)
+
     return {
         "note_density":    note_density,
         "ambitus":         ambitus,
@@ -69,6 +96,8 @@ def analyze(phrase: list[dict]) -> dict:
         "rhetorical_type": rhetorical_type,
         "is_sparse":       note_density < SPARSE_DENSITY_THRESHOLD,
         "duration_sec":    duration_sec,
+        "swing_ratio":     swing_ratio,
+        "rhythmic_feel":   rhythmic_feel,
     }
 
 
@@ -119,6 +148,55 @@ def _linear_slope(values: list) -> float:
     return num / denom if denom else 0.0
 
 
+def _detect_swing(onsets: list[float]) -> tuple[float, str]:
+    """
+    Estimate the swing ratio from a sequence of note onsets.
+
+    Returns (swing_ratio, rhythmic_feel).
+
+    Strategy: for each consecutive IOI pair (a, b), compute max(a,b)/min(a,b).
+    In swing feel the IOIs alternate long-short (2:1), giving a consistent
+    ratio of 2.0. In straight feel all IOIs are equal, giving 1.0. This does
+    not require a beat estimate and is robust to different subdivisions.
+
+    Note: triplet 8ths (all equal) are indistinguishable from straight 8ths
+    by this metric alone — both give ratio 1.0. That is acceptable here since
+    triplet 8ths do not need additional swing bias applied.
+    """
+    if len(onsets) < 4:
+        return 1.0, "mixed"
+
+    iois = [onsets[i + 1] - onsets[i] for i in range(len(onsets) - 1)]
+
+    # Drop outlier gaps (phrase rests) using median as reference
+    sorted_iois = sorted(iois)
+    median_ioi  = sorted_iois[len(sorted_iois) // 2]
+    iois = [x for x in iois if 0 < x < median_ioi * 3.5]
+
+    if len(iois) < 3:
+        return 1.0, "mixed"
+
+    # max/min ratio for each consecutive IOI pair
+    ratios = []
+    for i in range(len(iois) - 1):
+        a, b = iois[i], iois[i + 1]
+        lo = min(a, b)
+        if lo > 0:
+            ratios.append(max(a, b) / lo)
+
+    if len(ratios) < MIN_PAIRS_FOR_SWING:
+        return 1.0, "mixed"
+
+    swing_ratio = sum(ratios) / len(ratios)
+
+    if swing_ratio > SWING_RATIO_THRESHOLD:
+        feel = "swing"
+    else:
+        feel = "straight"
+
+    return swing_ratio, feel
+
+
 def _neutral() -> dict:
     return {
         "note_density":    0.0,
@@ -130,4 +208,6 @@ def _neutral() -> dict:
         "rhetorical_type": "neutral",
         "is_sparse":       True,
         "duration_sec":    0.0,
+        "swing_ratio":     1.0,
+        "rhythmic_feel":   "mixed",
     }
