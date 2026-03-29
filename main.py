@@ -2,29 +2,33 @@
 Wolfson — interactive jazz bass + sax improvisation system.
 
 Pipeline:
-  MidiListener → PhraseDetector → PhraseAnalyzer
-                                       │
-                                  ArcController ← tracks time, leadership, proactive state
-                                       │
-                                  PhraseGenerator ← LSTM + contour steering + chord conditioning
-                                       │
-                                  MidiOutput → synth
+  MidiListener → PhraseDetector  → PhraseAnalyzer
+                      │
+                 BeatEstimator   (tap tempo from bass onsets)
+                      │
+                 ArcController   (5-min arc, leadership, proactive mode)
+                      │
+                 PhraseGenerator (LSTM + contour steering + chord conditioning)
+                      │
+                 MidiOutput      (per-note duration, articulation)
 
-Proactive mode: a background thread checks periodically whether the sax should
-initiate a phrase (rather than waiting for a bass phrase to complete).
+Proactive thread: fires every PROACTIVE_CHECK_INTERVAL seconds; if the arc
+controller decides the sax should initiate, it generates and plays a phrase
+without waiting for a bass phrase to complete.
 """
 
 import threading
 import time
 
-from input.midi_listener   import MidiListener
-from input.phrase_detector import PhraseDetector
-from input.phrase_analyzer import analyze
-from memory.phrase_memory  import PhraseMemory
+from input.midi_listener    import MidiListener
+from input.phrase_detector  import PhraseDetector
+from input.phrase_analyzer  import analyze
+from input.beat_estimator   import BeatEstimator
+from memory.phrase_memory   import PhraseMemory
 from generator.phrase_generator import PhraseGenerator
 from controller.arc_controller  import ArcController
-from output.midi_output    import MidiOutput
-from config import DEFAULT_INSTRUMENT
+from output.midi_output     import MidiOutput
+from config import DEFAULT_INSTRUMENT, TEMPO_HINT_BPM
 
 PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
 
@@ -34,10 +38,11 @@ def main():
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
     arc       = ArcController(memory)
     midi_out  = MidiOutput()
+    beats     = BeatEstimator(initial_bpm=120.0, hint_bpm=TEMPO_HINT_BPM)
 
-    _running = threading.Event()
+    _running  = threading.Event()
     _running.set()
-    _sax_lock = threading.Lock()   # prevent overlapping sax phrases
+    _sax_lock = threading.Lock()   # one sax phrase at a time
 
     # ------------------------------------------------------------------
     # Bass phrase handler (reactive path)
@@ -49,15 +54,14 @@ def main():
         _respond(params, triggered_by="bass")
 
     # ------------------------------------------------------------------
-    # Sax response (shared by reactive and proactive paths)
+    # Shared response path
     # ------------------------------------------------------------------
 
     def _respond(params: dict, triggered_by: str):
         if params is None:
             return
-
         if not _sax_lock.acquire(blocking=False):
-            return   # sax already playing, skip
+            return   # sax already mid-phrase
 
         try:
             notes = generator.generate(
@@ -67,9 +71,12 @@ def main():
                 contour_target = params["contour_target"],
                 chord_idx      = params["chord_idx"],
             )
-
             if not notes:
                 return
+
+            # Convert beat durations → seconds using live tempo estimate
+            beat_dur_sec = beats.beat_duration
+            durations_sec = [n["duration_beats"] * beat_dur_sec for n in notes]
 
             memory.store(
                 [{"pitch": n["pitch"], "velocity": 80,
@@ -78,24 +85,15 @@ def main():
                 source="sax",
             )
 
-            _log(params, triggered_by, len(notes))
-
-            # Play in this thread (lock held throughout so proactive path
-            # can't interrupt); release when done
-            _play(notes, params)
+            _log(params, triggered_by, notes, beats.bpm)
+            midi_out.play_phrase(
+                pitches   = [n["pitch"] for n in notes],
+                durations = durations_sec,
+            )
 
         finally:
             arc.on_sax_played()
             _sax_lock.release()
-
-    def _play(notes: list[dict], params: dict):
-        """Convert {pitch, duration_beats} to MIDI, using a simple tempo estimate."""
-        tempo_bpm = 120.0   # TODO: derive from live bass phrase timing
-        beat_dur  = 60.0 / tempo_bpm
-        midi_out.play_phrase(
-            pitches  = [n["pitch"] for n in notes],
-            duration = beat_dur * sum(n["duration_beats"] for n in notes) / max(len(notes), 1),
-        )
 
     # ------------------------------------------------------------------
     # Proactive background thread
@@ -107,15 +105,19 @@ def main():
             if arc.should_play_proactively():
                 params = arc.get_proactive_params()
                 if params:
-                    _respond(params, triggered_by="sax (proactive)")
+                    _respond(params, triggered_by="sax")
 
     # ------------------------------------------------------------------
-    # MIDI I/O setup
+    # MIDI I/O and note-on hook for beat estimation
     # ------------------------------------------------------------------
+
+    def _note_on_with_beat(pitch, velocity, t):
+        beats.note_on(t)
+        detector.note_on(pitch, velocity, t)
 
     detector = PhraseDetector(on_phrase_complete=on_bass_phrase)
     listener = MidiListener(
-        on_note_on  = detector.note_on,
+        on_note_on  = _note_on_with_beat,
         on_note_off = detector.note_off,
     )
 
@@ -135,22 +137,23 @@ def main():
     finally:
         _running.clear()
         listener.stop()
+        midi_out.silence()
         midi_out.stop()
 
 
 # ------------------------------------------------------------------
-# Logging
+# Console logging
 # ------------------------------------------------------------------
 
-def _log(params: dict, triggered_by: str, n_notes: int):
-    elapsed  = params.get("_elapsed", 0)
-    stage    = params.get("stage", "?")
-    lead     = params.get("leadership", "?")
-    mode     = params.get("mode", "?")
-    contour  = params.get("contour_target", "?")
+def _log(params: dict, triggered_by: str, notes: list, bpm: float):
+    stage   = params.get("stage", "?")
+    lead    = params.get("leadership", "?")
+    mode    = params.get("mode", "?")
+    contour = params.get("contour_target", "?")
     print(
-        f"[{stage:>14s}]  lead={lead:<3s}  trigger={triggered_by:<20s}"
-        f"  mode={mode:<8s}  contour={contour:<10s}  n={n_notes}"
+        f"[{stage:>14s}]  {bpm:5.1f} bpm  lead={lead:<3s}  "
+        f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
+        f"contour={contour:<10s}  n={len(notes)}"
     )
 
 

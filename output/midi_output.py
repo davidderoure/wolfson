@@ -4,8 +4,8 @@ import rtmidi
 import time
 from config import MIDI_OUTPUT_PORT
 
-DEFAULT_VELOCITY = 80
-DEFAULT_NOTE_DURATION = 0.25   # seconds; will be made dynamic later
+DEFAULT_VELOCITY    = 80
+ARTICULATION_RATIO  = 0.85   # note sounds for this fraction of its slot; rest is silence
 
 
 class MidiOutput:
@@ -22,10 +22,29 @@ class MidiOutput:
     def stop(self):
         self._midi_out.close_port()
 
-    def play_phrase(self, pitches, duration=DEFAULT_NOTE_DURATION, velocity=DEFAULT_VELOCITY, channel=1):
-        """Play a list of MIDI pitches as a sequence of notes."""
-        ch = channel - 1   # rtmidi uses 0-indexed channels
-        for pitch in pitches:
+    def play_phrase(
+        self,
+        pitches:   list[int],
+        durations: list[float],          # per-note duration in seconds
+        velocity:  int   = DEFAULT_VELOCITY,
+        channel:   int   = 1,
+    ):
+        """
+        Play a phrase note-by-note with per-note durations.
+
+        Each note sounds for ARTICULATION_RATIO of its slot duration, with a
+        short silence before the next note — giving natural sax articulation.
+        """
+        ch = channel - 1
+        for pitch, dur in zip(pitches, durations):
+            sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
+            silence_dur = max(0.005, dur - sound_dur)
             self._midi_out.send_message([0x90 | ch, pitch, velocity])
-            time.sleep(duration)
+            time.sleep(sound_dur)
             self._midi_out.send_message([0x80 | ch, pitch, 0])
+            time.sleep(silence_dur)
+
+    def silence(self, channel: int = 1):
+        """Send all-notes-off on the output channel."""
+        ch = channel - 1
+        self._midi_out.send_message([0xB0 | ch, 123, 0])

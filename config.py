@@ -16,6 +16,11 @@ MAX_GENERATED_NOTES = 16      # max note-pairs (pitch+dur) per sax response phra
 GENERATION_TEMPERATURE = 0.9
 DEFAULT_INSTRUMENT = "sax"    # which trained model to load at startup
 
+# Tempo hint for the beat estimator (BPM).
+# Set to your approximate performance tempo if playing above ~160 BPM
+# or in an unusual register. 0 = no hint (estimator uses its running average).
+TEMPO_HINT_BPM = 0
+
 # Structural arc (all times in seconds from performance start)
 ARC = {
     "sparse":          (0,    60),
