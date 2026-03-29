@@ -86,6 +86,9 @@ def analyze(phrase: list[dict]) -> dict:
 
     swing_ratio, rhythmic_feel = _detect_swing(onsets)
 
+    velocities    = [n["velocity"] for n in phrase if "velocity" in n]
+    mean_velocity = int(sum(velocities) / len(velocities)) if velocities else 64
+
     return {
         "note_density":    note_density,
         "ambitus":         ambitus,
@@ -98,6 +101,7 @@ def analyze(phrase: list[dict]) -> dict:
         "duration_sec":    duration_sec,
         "swing_ratio":     swing_ratio,
         "rhythmic_feel":   rhythmic_feel,
+        "mean_velocity":   mean_velocity,
     }
 
 
@@ -210,4 +214,5 @@ def _neutral() -> dict:
         "duration_sec":    0.0,
         "swing_ratio":     1.0,
         "rhythmic_feel":   "mixed",
+        "mean_velocity":   64,
     }

@@ -227,6 +227,8 @@ class ArcController:
         # Swinging bass       → no extra bias (model handles it naturally).
         swing_bias = _compute_swing_bias(features, stage)
 
+        velocity = _compute_velocity(features, stage)
+
         return {
             "mode":                mode,
             "seed":                seed,
@@ -236,6 +238,7 @@ class ArcController:
             "chord_idx":           chord_idx,
             "scale_pitch_classes": scale_pcs,
             "swing_bias":          swing_bias,
+            "velocity":            velocity,
             "stage":               stage,
             "leadership":          self._leadership,
             "harmonic_mode":       self._harmony.current_mode_name(),
@@ -287,6 +290,35 @@ def _compute_swing_bias(features: dict, stage: str) -> float:
         return 0.0   # already swinging; let the model do its thing
     else:
         return 0.3   # light default swing flavour
+
+
+def _compute_velocity(features: dict, stage: str) -> int:
+    """
+    Map bass input dynamics to sax output velocity.
+
+    Strategy: mirror the bassist's mean velocity, scaled into a comfortable
+    sax range (45-95), then apply a stage multiplier so the piece naturally
+    breathes louder at peak and softer at the edges.
+
+    Soft playing  (~32) → sax ~52   (pp/mp)
+    Medium (~64)        → sax ~70   (mf)
+    Loud  (~100)        → sax ~84   (f)
+    Very loud (~120)    → sax ~92   (ff)
+    """
+    mean_vel = features.get("mean_velocity", 64)
+
+    # Linear map: 0-127 input → 45-95 sax range
+    base = int(45 + (mean_vel / 127.0) * 50)
+
+    stage_scale = {
+        "sparse":         0.85,   # hushed, exploratory
+        "building":       1.00,
+        "peak":           1.15,   # allow louder at climax
+        "recapitulation": 0.95,
+        "resolution":     0.80,   # fading out
+    }.get(stage, 1.0)
+
+    return max(40, min(110, int(base * stage_scale)))
 
 
 def _should_recall(stage: str, memory: PhraseMemory) -> bool:

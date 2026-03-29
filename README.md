@@ -58,6 +58,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Live tempo tracking** — a `BeatEstimator` infers BPM from inter-onset intervals in the bass line. Generated sax phrases play back in time with the bassist's actual tempo. No click track or advance setup required.
 
+**Dynamics** — the mean MIDI velocity of each bass phrase is tracked and mapped to the sax output velocity, so the sax mirrors the bassist's dynamic level. A stage multiplier modulates this further: sparse and resolution stages are inherently softer; the peak stage pushes louder. Playing quietly draws a quiet response; playing hard drives the sax to match.
+
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
 
 ### Performance arc
@@ -167,7 +169,7 @@ Options (combine with any demo):
 --notes INT    max notes per sax response            (default: 12)
 ```
 
-The console prints the chord name, scale size, swing bias, detected bass feel, and contour for each response.
+The console prints the chord name, scale size, swing bias, detected bass feel, contour, and output velocity for each response.
 
 ## Project structure
 
@@ -181,7 +183,7 @@ wolfson/
 ├── input/
 │   ├── midi_listener.py          MIDI input, note events
 │   ├── phrase_detector.py        Segments note stream into phrases
-│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing ratio
+│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing ratio, dynamics
 │   └── beat_estimator.py         Live tempo estimation from bass onsets
 ├── memory/
 │   └── phrase_memory.py          Stores phrases for recall and development
