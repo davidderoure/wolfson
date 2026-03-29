@@ -31,9 +31,11 @@ from config import MAX_GENERATED_NOTES, GENERATION_TEMPERATURE, DEFAULT_INSTRUME
 
 MODELS_DIR = Path(__file__).parent.parent / "models"
 
-# Contour steering
-CONTOUR_STEER_ONSET   = 0.6   # fraction of phrase before steering kicks in
-CONTOUR_BIAS_STRENGTH = 1.5   # logit bias strength
+# Contour steering — applied from note 0 so the whole phrase arcs,
+# not just the tail.  Seed mean pitch is used as the reference for the
+# first generated note so the sax starts in the right register.
+CONTOUR_STEER_ONSET   = 0.0   # fraction of phrase before steering kicks in (0 = always)
+CONTOUR_BIAS_STRENGTH = 2.5   # logit bias strength
 
 # Swing/triplet bias
 # Triplet grid in beat-relative durations: 1/3, 2/3, 1, 4/3, 2 beats
@@ -42,10 +44,17 @@ TRIPLET_DUR_BEATS = [1/3, 2/3, 1.0, 4/3, 2.0]
 SWING_BIAS_STRENGTH = 1.2   # logit bias added to triplet-grid duration tokens
 
 # Scale pitch bias
-# Positive bias added to pitch tokens whose pitch class is in the scale.
-# Non-scale tones are left at 0 (not penalised), so the model can still
-# use chromatic passing tones — the bias only nudges, does not force.
-SCALE_BIAS_STRENGTH = 1.0   # logit bias for in-scale pitch tokens
+SCALE_BIAS_STRENGTH = 2.0   # logit bias for in-scale pitch tokens (raised for clearer colour)
+
+# Minimum duration floor — prevents imperceptibly short notes
+MIN_DURATION_BEATS = 0.2    # ~100 ms at 120 BPM
+
+# Pitch range soft limits — strong negative logit bias outside these bounds
+# keeps the generated line in a realistic sax register regardless of where
+# the bass phrase ended.
+PITCH_RANGE_MIN      = 52   # E3 — lower practical limit
+PITCH_RANGE_MAX      = 88   # E6 — upper practical limit
+PITCH_RANGE_STRENGTH = 2.0  # logit penalty per semitone outside range
 
 
 class PhraseGenerator:
@@ -96,6 +105,10 @@ class PhraseGenerator:
         n_notes     = n_notes     or MAX_GENERATED_NOTES
         temperature = temperature or GENERATION_TEMPERATURE
 
+        # Seed mean pitch — used as contour reference for the first generated note
+        seed_pitches    = [n["pitch"] for n in seed_phrase if "pitch" in n]
+        seed_mean_pitch = sum(seed_pitches) / len(seed_pitches) if seed_pitches else 69.0
+
         seed_tokens = phrase_to_tokens(seed_phrase, tempo_bpm)
         seed_chords = phrase_to_chord_sequence(seed_phrase)
 
@@ -125,17 +138,21 @@ class PhraseGenerator:
                 # Enforce pitch/duration alternation
                 tok_logits = tok_logits + _alternation_mask(expecting)
 
-                # Scale pitch bias: applied to all pitch tokens throughout
-                if expecting == "pitch" and scale_pitch_classes:
-                    tok_logits = _apply_scale_bias(tok_logits, scale_pitch_classes)
+                if expecting == "pitch":
+                    # Soft pitch-range limits — penalise notes outside sax register
+                    tok_logits = tok_logits + _PITCH_RANGE_BIAS
 
-                # Contour steering: applied to pitch tokens in the final portion
-                if expecting == "pitch" and note_count >= int(n_notes * CONTOUR_STEER_ONSET):
-                    tok_logits = _apply_contour_bias(
-                        tok_logits, generated_tokens, contour_target
-                    )
+                    # Scale pitch bias
+                    if scale_pitch_classes:
+                        tok_logits = _apply_scale_bias(tok_logits, scale_pitch_classes)
 
-                # Swing/triplet bias: applied to duration tokens throughout
+                    # Contour steering — applied throughout (CONTOUR_STEER_ONSET=0.0)
+                    if note_count >= int(n_notes * CONTOUR_STEER_ONSET):
+                        tok_logits = _apply_contour_bias(
+                            tok_logits, generated_tokens, contour_target, seed_mean_pitch
+                        )
+
+                    # Swing/triplet bias: applied to duration tokens throughout
                 if expecting == "duration" and swing_bias > 0.0:
                     tok_logits = _apply_swing_bias(tok_logits, swing_bias)
 
@@ -155,7 +172,11 @@ class PhraseGenerator:
                 else:
                     expecting = "pitch"
 
-        return tokens_to_phrase(generated_tokens)
+        notes = tokens_to_phrase(generated_tokens)
+        # Enforce minimum duration — prevents imperceptibly short notes
+        for n in notes:
+            n["duration_beats"] = max(n["duration_beats"], MIN_DURATION_BEATS)
+        return notes
 
 
 # ---------------------------------------------------------------------------
@@ -203,32 +224,34 @@ def _apply_contour_bias(
     logits: torch.Tensor,
     generated_so_far: list[int],
     target: str,
+    seed_mean_pitch: float = 69.0,
 ) -> torch.Tensor:
     """
-    Add a soft bias to pitch token logits to steer the phrase ending.
+    Add a soft bias to pitch token logits to steer the phrase contour.
 
     'descending' → bias toward lower pitches (answer phrase / resolution)
     'ascending'  → bias toward higher pitches (question phrase / tension)
     'neutral'    → no bias
 
-    The bias is proportional to distance from the phrase mean pitch,
-    so it nudges gently rather than forcing a specific note.
+    Reference pitch: mean of already-generated notes if available, otherwise
+    the seed phrase mean — so from note 0 the sax starts in the right register.
+    Bias is proportional to distance from the reference, nudging without forcing.
     """
     if target == "neutral":
         return logits
 
-    # Estimate mean pitch of generated phrase so far
     pitch_tokens = [t for t in generated_so_far if t < N_PITCHES]
-    if not pitch_tokens:
-        return logits
-
-    mean_pitch_token = sum(pitch_tokens) / len(pitch_tokens)
+    if pitch_tokens:
+        mean_pitch_token = sum(pitch_tokens) / len(pitch_tokens)
+    else:
+        # First note: use seed phrase mean as reference
+        from data.encoding import PITCH_MIN
+        mean_pitch_token = seed_mean_pitch - PITCH_MIN
 
     bias = torch.zeros(VOCAB_SIZE)
     for i in range(N_PITCHES):
         distance = i - mean_pitch_token
         if target == "descending":
-            # Reward tokens below mean, penalise above
             bias[i] = -distance * (CONTOUR_BIAS_STRENGTH / N_PITCHES)
         else:  # ascending
             bias[i] = distance * (CONTOUR_BIAS_STRENGTH / N_PITCHES)
@@ -250,6 +273,25 @@ def _apply_swing_bias(logits: torch.Tensor, strength: float) -> torch.Tensor:
     for t in _TRIPLET_TOKENS:
         bias[t] = SWING_BIAS_STRENGTH * strength
     return logits + bias
+
+
+def _apply_pitch_range_bias() -> torch.Tensor:
+    """
+    Apply a soft logit penalty to pitch tokens outside the practical sax register.
+    Penalty grows linearly with distance beyond the limit, making extreme pitches
+    progressively less likely without hard-clamping them.
+    """
+    from data.encoding import PITCH_MIN
+    bias = torch.zeros(VOCAB_SIZE)
+    for tok in range(N_PITCHES):
+        pitch = PITCH_MIN + tok
+        if pitch < PITCH_RANGE_MIN:
+            bias[tok] = -(PITCH_RANGE_MIN - pitch) * PITCH_RANGE_STRENGTH
+        elif pitch > PITCH_RANGE_MAX:
+            bias[tok] = -(pitch - PITCH_RANGE_MAX) * PITCH_RANGE_STRENGTH
+    return bias
+
+_PITCH_RANGE_BIAS: torch.Tensor = _apply_pitch_range_bias()   # precomputed once
 
 
 def _apply_scale_bias(

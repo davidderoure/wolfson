@@ -39,7 +39,7 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Leadership and role swapping** — the system tracks who is leading at each moment. Sparse bass playing (low density, small range) signals the bassist is comping; the sax takes the initiative. Dense melodic bass signals the sax should respond. Leadership shifts deliberately over the arc.
 
-**Contour steering** — soft logit biases on pitch tokens in the final portion of each generated phrase guide its ending upward or downward as needed.
+**Contour steering** — soft logit biases on pitch tokens guide the sax phrase toward a target contour (ascending / descending / neutral). Steering is applied from the first generated note using the seed phrase's mean pitch as the reference, so the whole arc of the response reflects the rhetorical intent rather than just the tail. Bias strength increases linearly with distance from the reference pitch.
 
 **Chord conditioning** — the LSTM is trained with chord context from the WJD beats table (49-token chord vocabulary: 12 roots × 4 quality classes + NC). At runtime the `HarmonyController` issues a chord index each phrase; the model degrades gracefully to NC if no chord is supplied.
 
@@ -52,13 +52,17 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 | `progression` | Steps through a chord progression one chord per phrase — ii-V-I, VI-II-V-I, I-VI-II-V, or 12-bar blues; tritone substitution on V7 chords (~35%); used at peak |
 | `pedal` | Fixed bass pedal tone with cycling upper harmony (i → bVII7 → i → V7); used in resolution |
 
-**Scale pitch bias** — positive logit bias is added to pitch tokens whose pitch class belongs to the current chord's scale or mode. Non-scale tones are not penalised, so chromatic passing notes remain available.
+**Scale pitch bias** — positive logit bias is added to pitch tokens whose pitch class belongs to the current chord's scale or mode. Non-scale tones are not penalised, so chromatic passing notes remain available. Bias strength is set to give clearly audible harmonic colour across different modes and chord qualities.
+
+**Pitch range** — a soft logit penalty steers generated pitches into a practical sax register (E3–E6). Notes outside this range are penalised proportionally to their distance from the limit, preventing the generator from following the bass into an unplayable register while still allowing occasional extremes.
 
 **Swing / triplet feel** — the system detects whether the bass is playing straight or swung (from consecutive IOI ratios). A straight bass call gets a triplet-grid duration bias in the response, pushing the sax toward the 12/8 feel and creating rhythmic contrast. A swinging bass gets no bias — the LSTM's learned distribution handles it.
 
 **Live tempo tracking** — a `BeatEstimator` infers BPM from inter-onset intervals in the bass line. Generated sax phrases play back in time with the bassist's actual tempo. No click track or advance setup required.
 
 **Dynamics** — the mean MIDI velocity of each bass phrase is tracked and mapped to the sax output velocity, so the sax mirrors the bassist's dynamic level. A stage multiplier modulates this further: sparse and resolution stages are inherently softer; the peak stage pushes louder. Playing quietly draws a quiet response; playing hard drives the sax to match.
+
+**Articulation** — each generated note sounds for 85% of its time slot, with a short silence before the next note. A minimum duration floor (0.2 beats, ≈100 ms at 120 BPM) prevents imperceptibly short notes from appearing in dense generated passages.
 
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
 
@@ -171,6 +175,31 @@ Options (combine with any demo):
 
 The console prints the chord name, scale size, swing bias, detected bass feel, contour, and output velocity for each response.
 
+## Automated test suite
+
+`tests/run_tests.py` runs ten feature tests programmatically — no MIDI hardware needed. Each test constructs a synthetic bass phrase, analyses it, generates a sax response with explicit parameters, and writes a log file. A combined two-track demo MIDI is also produced.
+
+```bash
+python tests/run_tests.py
+```
+
+Outputs:
+- `tests/logs/01_basic_response.txt` … `tests/logs/10_sparse.txt` — per-test log showing bass phrase, analysis features, generation parameters, and sax response
+- `tests/demo.mid` — two-track MIDI (bass + sax) with all test segments in sequence, ready to import into a DAW
+
+| Test | Feature exercised |
+|------|-------------------|
+| 01 | Basic call-response |
+| 02 | Dynamics — soft (vel=30) |
+| 03 | Dynamics — loud (vel=100) |
+| 04 | Contour — ascending bass → descending sax |
+| 05 | Contour — descending bass → ascending sax |
+| 06 | Swing feel detected → no extra triplet bias |
+| 07 | Straight feel detected → triplet-grid bias applied |
+| 08 | D Dorian scale pitch bias |
+| 09 | ii-V-I: same phrase over Dm7, G7, Cmaj |
+| 10 | Sparse phrase → sax generates longer response |
+
 ## Project structure
 
 ```
@@ -196,12 +225,15 @@ wolfson/
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
 │   └── midi_output.py            Per-note MIDI playback with articulation
-└── data/
-    ├── encoding.py               Pitch+duration token encoding
-    ├── chords.py                 Chord parsing and 49-token vocabulary
-    ├── scales.py                 Mode interval tables and scale pitch-class helpers
-    ├── instruments.py            Instrument family definitions and pitch ranges
-    └── prepare.py                WJD data preparation script
+├── data/
+│   ├── encoding.py               Pitch+duration token encoding
+│   ├── chords.py                 Chord parsing and 49-token vocabulary
+│   ├── scales.py                 Mode interval tables and scale pitch-class helpers
+│   ├── instruments.py            Instrument family definitions and pitch ranges
+│   └── prepare.py                WJD data preparation script
+└── tests/
+    ├── run_tests.py              Automated test suite; writes logs + demo.mid
+    └── logs/                     Per-test log files (generated)
 ```
 
 ## Extending to other instruments

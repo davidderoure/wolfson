@@ -1,9 +1,9 @@
 # MIDI
 MIDI_INPUT_PORT = 0       # index of your bass pitch-to-MIDI interface
-MIDI_OUTPUT_PORT = 0      # index of synth/output for the sax voice
+MIDI_OUTPUT_PORT = 1      # index of synth/output for the sax voice
 
 # Phrase detection
-SILENCE_THRESHOLD_SEC = 0.4   # gap that marks a phrase boundary
+SILENCE_THRESHOLD_SEC = 1.0   # gap that marks a phrase boundary
 MIN_PHRASE_NOTES = 2           # ignore micro-phrases shorter than this
 
 # Phrase memory

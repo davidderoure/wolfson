@@ -30,7 +30,7 @@ import math
 
 
 # Thresholds (tune by ear during rehearsal)
-SPARSE_DENSITY_THRESHOLD  = 2.5   # notes/sec below this → bassist is comping/filling
+SPARSE_DENSITY_THRESHOLD  = 1.5   # notes/sec below this → bassist is comping/filling
 MELODIC_AMBITUS_THRESHOLD = 7     # semitones; below this → phrase is not strongly directional
 QUESTION_END_THRESHOLD    = 0.15  # end pitch above this fraction of ambitus above mean → question
 
