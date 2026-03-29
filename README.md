@@ -112,6 +112,12 @@ To list available ports:
 python -c "import rtmidi; m=rtmidi.MidiIn(); print(m.get_ports())"
 ```
 
+To verify that MIDI events are arriving on the correct input port before starting the main script:
+```bash
+python test-midi-in.py
+```
+Play a few notes — you should see `Note ON` and `Note OFF` lines for each. Adjust `MIDI_INPUT_PORT` in `config.py` until events appear, then run `main.py`.
+
 ## Training
 
 ### 1. Get the data
@@ -206,6 +212,7 @@ Outputs:
 wolfson/
 ├── main.py                       Entry point (full 5-minute performance)
 ├── demo.py                       Feature-focused testing without the arc
+├── test-midi-in.py               Verify MIDI input port and event routing
 ├── config.py                     All tunable parameters
 ├── wolfson_train.ipynb           Google Colab training notebook
 ├── requirements.txt
