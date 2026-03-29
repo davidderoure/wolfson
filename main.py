@@ -104,6 +104,7 @@ def main():
         try:
             notes = generator.generate(
                 seed_phrase         = params["seed"],
+                tempo_bpm           = beats.bpm,
                 n_notes             = params["n_notes"],
                 temperature         = params["temperature"],
                 contour_target      = params["contour_target"],
@@ -128,12 +129,24 @@ def main():
             beat_dur_sec  = beats.beat_duration
             durations_sec = [n["duration_beats"] * beat_dur_sec for n in notes]
 
-            memory.store(
-                [{"pitch": n["pitch"], "velocity": 80,
-                  "onset": 0, "offset": n["duration_beats"]}
-                 for n in notes],
-                source="sax",
-            )
+            # Build a properly-timed sax phrase for memory storage.
+            # onset/offset are in seconds; beat_dur_sec is stored per note so
+            # phrase_to_tokens can decode durations correctly at any tempo.
+            # (Previously all onsets were 0, making every note appear simultaneous
+            # and doubling durations when the phrase was later used as a seed.)
+            _t = 0.0
+            sax_phrase = []
+            for n in notes:
+                dur_sec = n["duration_beats"] * beat_dur_sec
+                sax_phrase.append({
+                    "pitch":        n["pitch"],
+                    "velocity":     80,
+                    "onset":        _t,
+                    "offset":       _t + dur_sec,
+                    "beat_dur_sec": beat_dur_sec,
+                })
+                _t += dur_sec
+            memory.store(sax_phrase, source="sax")
 
             _log(params, triggered_by, notes, beats.bpm)
             midi_out.play_phrase(
@@ -171,10 +184,11 @@ def main():
             for n in notes:
                 dur_sec = n["duration_beats"] * beat_dur_sec
                 phrase.append({
-                    "pitch":    n["pitch"],
-                    "velocity": 64,
-                    "onset":    now + onset,
-                    "offset":   now + onset + dur_sec,
+                    "pitch":        n["pitch"],
+                    "velocity":     64,
+                    "onset":        now + onset,
+                    "offset":       now + onset + dur_sec,
+                    "beat_dur_sec": beat_dur_sec,
                 })
                 beats.note_on(now + onset)   # keep tempo estimator warm
                 onset += dur_sec
