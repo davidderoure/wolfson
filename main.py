@@ -15,8 +15,15 @@ Pipeline:
 Proactive thread: fires every PROACTIVE_CHECK_INTERVAL seconds; if the arc
 controller decides the sax should initiate, it generates and plays a phrase
 without waiting for a bass phrase to complete.
+
+Self-play mode (--self-play):
+  The system feeds its own sax output back as input, creating an autonomous
+  generative loop. No MIDI hardware needed. A short seed phrase bootstraps
+  the first exchange; thereafter the sax continuously responds to itself.
+  The 5-minute structural arc still governs the performance.
 """
 
+import argparse
 import threading
 import time
 
@@ -32,13 +39,41 @@ from config import DEFAULT_INSTRUMENT, TEMPO_HINT_BPM
 
 PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
 
+# Self-play: brief silence between phrases (seconds) — musical breathing room
+SELF_PLAY_PHRASE_GAP = 0.15
+
+# Self-play seed: D minor pentatonic opening motif (pitch, beat-duration pairs)
+# Gives the LSTM something musical to respond to on the very first exchange.
+_SEED_PITCHES    = [62, 65, 67, 69, 72, 69, 67]   # D4 F4 G4 A4 C5 A4 G4
+_SEED_DUR_BEATS  = [0.5, 0.5, 0.5, 0.5, 1.0, 0.5, 1.0]
+
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Wolfson interactive jazz improvisation system"
+    )
+    parser.add_argument(
+        "--self-play", action="store_true",
+        help="Autonomous mode: sax feeds its output back as its own input. "
+             "No MIDI hardware required.",
+    )
+    parser.add_argument(
+        "--bpm", type=float, default=120.0,
+        help="Tempo for self-play mode (default: 120)",
+    )
+    args = parser.parse_args()
+
+    self_play   = args.self_play
+    initial_bpm = args.bpm
+
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
     arc       = ArcController(memory)
     midi_out  = MidiOutput()
-    beats     = BeatEstimator(initial_bpm=120.0, hint_bpm=TEMPO_HINT_BPM)
+    beats     = BeatEstimator(
+        initial_bpm = initial_bpm,
+        hint_bpm    = TEMPO_HINT_BPM or initial_bpm,
+    )
 
     _running  = threading.Event()
     _running.set()
@@ -63,6 +98,9 @@ def main():
         if not _sax_lock.acquire(blocking=False):
             return   # sax already mid-phrase
 
+        notes_out    = []
+        beat_dur_sec = beats.beat_duration
+
         try:
             notes = generator.generate(
                 seed_phrase         = params["seed"],
@@ -76,8 +114,7 @@ def main():
             if not notes:
                 return
 
-            # Convert beat durations → seconds using live tempo estimate
-            beat_dur_sec = beats.beat_duration
+            beat_dur_sec  = beats.beat_duration
             durations_sec = [n["duration_beats"] * beat_dur_sec for n in notes]
 
             memory.store(
@@ -94,9 +131,45 @@ def main():
                 velocity  = params.get("velocity", 80),
             )
 
+            notes_out = notes   # capture after successful play
+
         finally:
             arc.on_sax_played()
             _sax_lock.release()
+
+        # Self-play feedback — lock already released before this runs
+        if self_play and notes_out and _running.is_set():
+            _schedule_feedback(notes_out, beat_dur_sec)
+
+    # ------------------------------------------------------------------
+    # Self-play feedback
+    # ------------------------------------------------------------------
+
+    def _schedule_feedback(notes: list[dict], beat_dur_sec: float):
+        """
+        Inject sax notes back as a bass phrase in a new daemon thread.
+        A short gap simulates the silence between phrases.
+        """
+        def _run():
+            time.sleep(SELF_PLAY_PHRASE_GAP)
+            if not _running.is_set():
+                return
+            now    = time.time()
+            phrase = []
+            onset  = 0.0
+            for n in notes:
+                dur_sec = n["duration_beats"] * beat_dur_sec
+                phrase.append({
+                    "pitch":    n["pitch"],
+                    "velocity": 64,
+                    "onset":    now + onset,
+                    "offset":   now + onset + dur_sec,
+                })
+                beats.note_on(now + onset)   # keep tempo estimator warm
+                onset += dur_sec
+            on_bass_phrase(phrase)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Proactive background thread
@@ -126,12 +199,42 @@ def main():
 
     midi_out.start()
     arc.start()
-    listener.start()
+
+    if self_play:
+        # Seed the loop with an opening phrase in a background thread
+        # so main() is not blocked before the KeyboardInterrupt handler.
+        def _bootstrap():
+            time.sleep(0.5)   # allow arc to initialise
+            if not _running.is_set():
+                return
+            beat_dur = 60.0 / initial_bpm
+            now      = time.time()
+            phrase   = []
+            onset    = 0.0
+            for p, d in zip(_SEED_PITCHES, _SEED_DUR_BEATS):
+                dur_sec = d * beat_dur
+                phrase.append({
+                    "pitch":    p,
+                    "velocity": 64,
+                    "onset":    now + onset,
+                    "offset":   now + onset + dur_sec,
+                })
+                beats.note_on(now + onset)
+                onset += dur_sec
+            on_bass_phrase(phrase)
+
+        threading.Thread(target=_bootstrap, daemon=True).start()
+        print(
+            f"Wolfson self-play mode. {initial_bpm:.0f} BPM. "
+            "Ctrl-C to stop.\n"
+        )
+    else:
+        listener.start()
+        print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
 
     proactive_thread = threading.Thread(target=_proactive_loop, daemon=True)
     proactive_thread.start()
 
-    print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
     try:
         while True:
             time.sleep(0.1)
@@ -139,7 +242,8 @@ def main():
         print("\nStopping.")
     finally:
         _running.clear()
-        listener.stop()
+        if not self_play:
+            listener.stop()
         midi_out.silence()
         midi_out.stop()
 

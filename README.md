@@ -155,6 +155,22 @@ Best model saved to `models/sax_best.pt`.
 python main.py
 ```
 
+#### Self-play mode
+
+Pass `--self-play` to run Wolfson autonomously — no MIDI input hardware needed. The sax feeds its own output back as input, creating a continuous generative loop. The 5-minute structural arc still governs the performance.
+
+```bash
+python main.py --self-play           # 120 BPM
+python main.py --self-play --bpm 90  # set tempo
+```
+
+The system seeds itself with a short D minor pentatonic motif, then responds to each phrase it generates. Each response seeds the next, so the musical conversation develops and evolves over the full arc. Useful for:
+- Listening to the model's musical character without a musician present
+- Testing the arc structure and harmonic progression in real time
+- Leaving it running as a generative ambient piece
+
+The console output is identical to normal mode (stage, tempo, contour, harmony, etc.).
+
 ## Testing individual features
 
 `demo.py` lets you test any single feature in isolation without the 5-minute arc. Each bass phrase you play triggers one sax response using fixed, explicit parameters.
