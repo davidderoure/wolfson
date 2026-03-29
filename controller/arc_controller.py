@@ -15,6 +15,7 @@ from config import ARC
 from data.chords import NC_INDEX
 from input.phrase_analyzer import analyze, complement_contour
 from memory.phrase_memory import PhraseMemory
+from controller.harmony import HarmonyController, stage_to_harmonic_mode
 
 
 # How long the sax waits in proactive mode before initiating (seconds)
@@ -40,8 +41,9 @@ class ArcController:
         # Updated by _update_leadership() each time a bass phrase arrives.
         self._leadership = "bass"
 
-        # Current chord (updated externally if a chord chart is in use)
-        self.current_chord_idx = NC_INDEX
+        # Harmonic controller — issues chord tokens and scale pitch-class sets
+        self._harmony = HarmonyController()
+        self._last_harmonic_stage = None   # detect stage changes
 
     # -----------------------------------------------------------------------
     # Lifecycle
@@ -187,6 +189,15 @@ class ArcController:
     def _build_params(self, phrase: list[dict], features: dict, proactive: bool) -> dict:
         stage = self.stage()
 
+        # Switch harmonic mode when the performance stage changes
+        if stage != self._last_harmonic_stage:
+            new_harm_mode = stage_to_harmonic_mode(stage)
+            self._harmony.set_mode(new_harm_mode)
+            self._last_harmonic_stage = stage
+
+        # Advance harmony and get chord token + scale pitch classes
+        chord_idx, scale_pcs = self._harmony.next_chord()
+
         contour_target = complement_contour(features)
 
         # Phrase length: longer when sax leads, shorter when following
@@ -217,15 +228,17 @@ class ArcController:
         swing_bias = _compute_swing_bias(features, stage)
 
         return {
-            "mode":           mode,
-            "seed":           seed,
-            "n_notes":        n_notes,
-            "temperature":    temperature,
-            "contour_target": contour_target,
-            "chord_idx":      self.current_chord_idx,
-            "swing_bias":     swing_bias,
-            "stage":          stage,
-            "leadership":     self._leadership,
+            "mode":                mode,
+            "seed":                seed,
+            "n_notes":             n_notes,
+            "temperature":         temperature,
+            "contour_target":      contour_target,
+            "chord_idx":           chord_idx,
+            "scale_pitch_classes": scale_pcs,
+            "swing_bias":          swing_bias,
+            "stage":               stage,
+            "leadership":          self._leadership,
+            "harmonic_mode":       self._harmony.current_mode_name(),
         }
 
 

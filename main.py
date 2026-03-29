@@ -65,12 +65,13 @@ def main():
 
         try:
             notes = generator.generate(
-                seed_phrase    = params["seed"],
-                n_notes        = params["n_notes"],
-                temperature    = params["temperature"],
-                contour_target = params["contour_target"],
-                chord_idx      = params["chord_idx"],
-                swing_bias     = params.get("swing_bias", 0.0),
+                seed_phrase         = params["seed"],
+                n_notes             = params["n_notes"],
+                temperature         = params["temperature"],
+                contour_target      = params["contour_target"],
+                chord_idx           = params["chord_idx"],
+                swing_bias          = params.get("swing_bias", 0.0),
+                scale_pitch_classes = params.get("scale_pitch_classes"),
             )
             if not notes:
                 return
@@ -147,14 +148,15 @@ def main():
 # ------------------------------------------------------------------
 
 def _log(params: dict, triggered_by: str, notes: list, bpm: float):
-    stage   = params.get("stage", "?")
-    lead    = params.get("leadership", "?")
-    mode    = params.get("mode", "?")
-    contour = params.get("contour_target", "?")
+    stage    = params.get("stage", "?")
+    lead     = params.get("leadership", "?")
+    mode     = params.get("mode", "?")
+    contour  = params.get("contour_target", "?")
+    harm     = params.get("harmonic_mode", "?")
     print(
         f"[{stage:>14s}]  {bpm:5.1f} bpm  lead={lead:<3s}  "
         f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
-        f"contour={contour:<10s}  n={len(notes)}"
+        f"harm={harm:<12s}  contour={contour:<10s}  n={len(notes)}"
     )
 
 

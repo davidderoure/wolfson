@@ -8,6 +8,8 @@ Key additions over the basic generator:
   - Swing/triplet bias: soft bias on duration logits toward the 12/8 triplet grid
     (1/3, 2/3, 4/3, 2 beats), enabling rhythmic contrast when the bass plays
     straight quarter notes — a 4-to-the-bar call gets a triplet-feel response
+  - Scale pitch bias: soft logit bias toward pitch tokens that belong to the
+    current chord/mode's scale, supplied as a frozenset[int] of pitch classes
 """
 
 import sys
@@ -39,6 +41,12 @@ CONTOUR_BIAS_STRENGTH = 1.5   # logit bias strength
 TRIPLET_DUR_BEATS = [1/3, 2/3, 1.0, 4/3, 2.0]
 SWING_BIAS_STRENGTH = 1.2   # logit bias added to triplet-grid duration tokens
 
+# Scale pitch bias
+# Positive bias added to pitch tokens whose pitch class is in the scale.
+# Non-scale tones are left at 0 (not penalised), so the model can still
+# use chromatic passing tones — the bias only nudges, does not force.
+SCALE_BIAS_STRENGTH = 1.0   # logit bias for in-scale pitch tokens
+
 
 class PhraseGenerator:
     def __init__(self, instrument=None, model_path=None):
@@ -60,24 +68,28 @@ class PhraseGenerator:
 
     def generate(
         self,
-        seed_phrase:     list[dict],
-        tempo_bpm:       float = 120.0,
-        n_notes:         int   = None,
-        temperature:     float = None,
-        contour_target:  str   = "neutral",   # 'ascending', 'descending', 'neutral'
-        chord_idx:       int   = NC_INDEX,
-        swing_bias:      float = 0.0,         # 0 = no bias, 1 = full triplet-grid bias
+        seed_phrase:        list[dict],
+        tempo_bpm:          float         = 120.0,
+        n_notes:            int           = None,
+        temperature:        float         = None,
+        contour_target:     str           = "neutral",   # 'ascending', 'descending', 'neutral'
+        chord_idx:          int           = NC_INDEX,
+        swing_bias:         float         = 0.0,         # 0 = no bias, 1 = full triplet-grid bias
+        scale_pitch_classes: frozenset    = None,        # pitch classes (0–11) for scale bias
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
 
-        seed_phrase:    list of note dicts (pitch, onset, offset, [beat_dur_sec], [chord_idx])
-        tempo_bpm:      used only as fallback if notes lack beat_dur_sec
-        contour_target: steer the ending of the phrase toward rising or falling pitch
-        chord_idx:      current chord (NC_INDEX if unknown)
-        swing_bias:     0–1, strength of triplet-grid duration bias.
-                        Set to 1.0 when bass plays straight 4-to-bar to get a
-                        swung/triplet response; 0.0 for no rhythmic steering.
+        seed_phrase:         list of note dicts (pitch, onset, offset, [beat_dur_sec], [chord_idx])
+        tempo_bpm:           used only as fallback if notes lack beat_dur_sec
+        contour_target:      steer the ending of the phrase toward rising or falling pitch
+        chord_idx:           current chord (NC_INDEX if unknown)
+        swing_bias:          0–1, strength of triplet-grid duration bias.
+                             Set to 1.0 when bass plays straight 4-to-bar to get a
+                             swung/triplet response; 0.0 for no rhythmic steering.
+        scale_pitch_classes: frozenset of pitch classes (0–11) from the current mode/chord.
+                             Pitch tokens whose PC is in this set get a positive logit bias.
+                             Pass None (or omit) to disable scale bias (chromatic).
 
         Returns: list of {pitch, duration_beats} dicts
         """
@@ -112,6 +124,10 @@ class PhraseGenerator:
 
                 # Enforce pitch/duration alternation
                 tok_logits = tok_logits + _alternation_mask(expecting)
+
+                # Scale pitch bias: applied to all pitch tokens throughout
+                if expecting == "pitch" and scale_pitch_classes:
+                    tok_logits = _apply_scale_bias(tok_logits, scale_pitch_classes)
 
                 # Contour steering: applied to pitch tokens in the final portion
                 if expecting == "pitch" and note_count >= int(n_notes * CONTOUR_STEER_ONSET):
@@ -233,4 +249,31 @@ def _apply_swing_bias(logits: torch.Tensor, strength: float) -> torch.Tensor:
     bias = torch.zeros(VOCAB_SIZE)
     for t in _TRIPLET_TOKENS:
         bias[t] = SWING_BIAS_STRENGTH * strength
+    return logits + bias
+
+
+def _apply_scale_bias(
+    logits: torch.Tensor,
+    pitch_classes: frozenset,
+) -> torch.Tensor:
+    """
+    Add SCALE_BIAS_STRENGTH to pitch tokens whose pitch class belongs to the
+    current scale / mode.
+
+    Non-scale tones are not penalised (bias stays 0), so chromatic passing notes
+    remain possible — the bias nudges toward scale tones without eliminating
+    chromaticism.  The LSTM's learned jazz vocabulary still governs the overall
+    choice; this is a gentle harmonic steer, not a hard constraint.
+
+    pitch_classes: frozenset of ints in 0–11 (from data.scales.scale_pitch_classes)
+    """
+    if not pitch_classes:
+        return logits
+    bias = torch.zeros(VOCAB_SIZE)
+    for tok in range(N_PITCHES):
+        # tok is a pitch token; the actual MIDI pitch is PITCH_MIN + tok
+        from data.encoding import PITCH_MIN
+        pc = (PITCH_MIN + tok) % 12
+        if pc in pitch_classes:
+            bias[tok] = SCALE_BIAS_STRENGTH
     return logits + bias
