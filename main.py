@@ -264,16 +264,17 @@ def main():
 # ------------------------------------------------------------------
 
 def _log(params: dict, triggered_by: str, notes: list, bpm: float):
-    stage    = params.get("stage", "?")
-    lead     = params.get("leadership", "?")
-    mode     = params.get("mode", "?")
-    contour  = params.get("contour_target", "?")
-    harm     = params.get("harmonic_mode", "?")
-    vel      = params.get("velocity", 80)
+    stage   = params.get("stage", "?")
+    lead    = params.get("leadership", "?")
+    mode    = params.get("mode", "?")
+    contour = params.get("contour_target", "?")
+    harm    = params.get("harmonic_mode", "?")
+    src     = params.get("scale_source", "arc")
+    vel     = params.get("velocity", 80)
     print(
         f"[{stage:>14s}]  {bpm:5.1f} bpm  lead={lead:<3s}  "
         f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
-        f"harm={harm:<12s}  contour={contour:<10s}  vel={vel:3d}  n={len(notes)}"
+        f"harm={harm:<12s}  scale={src:<5s}  contour={contour:<10s}  vel={vel:3d}  n={len(notes)}"
     )
 
 

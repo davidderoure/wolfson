@@ -89,19 +89,25 @@ def analyze(phrase: list[dict]) -> dict:
     velocities    = [n["velocity"] for n in phrase if "velocity" in n]
     mean_velocity = int(sum(velocities) / len(velocities)) if velocities else 64
 
+    # Pitch-class set: which of the 12 chromatic pitch classes appeared.
+    # Used by the arc controller to steer the sax toward the bassist's
+    # harmonic language when the phrase is tonally unambiguous.
+    bass_pitch_classes = frozenset(n["pitch"] % 12 for n in phrase)
+
     return {
-        "note_density":    note_density,
-        "ambitus":         ambitus,
-        "mean_pitch":      mean_pitch,
-        "contour_slope":   contour_slope,
-        "end_pitch":       end_pitch,
-        "end_direction":   end_direction,
-        "rhetorical_type": rhetorical_type,
-        "is_sparse":       note_density < SPARSE_DENSITY_THRESHOLD,
-        "duration_sec":    duration_sec,
-        "swing_ratio":     swing_ratio,
-        "rhythmic_feel":   rhythmic_feel,
-        "mean_velocity":   mean_velocity,
+        "note_density":      note_density,
+        "ambitus":           ambitus,
+        "mean_pitch":        mean_pitch,
+        "contour_slope":     contour_slope,
+        "end_pitch":         end_pitch,
+        "end_direction":     end_direction,
+        "rhetorical_type":   rhetorical_type,
+        "is_sparse":         note_density < SPARSE_DENSITY_THRESHOLD,
+        "duration_sec":      duration_sec,
+        "swing_ratio":       swing_ratio,
+        "rhythmic_feel":     rhythmic_feel,
+        "mean_velocity":     mean_velocity,
+        "bass_pitch_classes": bass_pitch_classes,
     }
 
 
@@ -203,16 +209,17 @@ def _detect_swing(onsets: list[float]) -> tuple[float, str]:
 
 def _neutral() -> dict:
     return {
-        "note_density":    0.0,
-        "ambitus":         0,
-        "mean_pitch":      60.0,
-        "contour_slope":   0.0,
-        "end_pitch":       60,
-        "end_direction":   0,
-        "rhetorical_type": "neutral",
-        "is_sparse":       True,
-        "duration_sec":    0.0,
-        "swing_ratio":     1.0,
-        "rhythmic_feel":   "mixed",
-        "mean_velocity":   64,
+        "note_density":      0.0,
+        "ambitus":           0,
+        "mean_pitch":        60.0,
+        "contour_slope":     0.0,
+        "end_pitch":         60,
+        "end_direction":     0,
+        "rhetorical_type":   "neutral",
+        "is_sparse":         True,
+        "duration_sec":      0.0,
+        "swing_ratio":       1.0,
+        "rhythmic_feel":     "mixed",
+        "mean_velocity":     64,
+        "bass_pitch_classes": frozenset(),
     }

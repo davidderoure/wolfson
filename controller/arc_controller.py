@@ -198,6 +198,29 @@ class ArcController:
         # Advance harmony and get chord token + scale pitch classes
         chord_idx, scale_pcs = self._harmony.next_chord()
 
+        # ------------------------------------------------------------------
+        # Bass pitch-class tracking: steer the sax toward the tonality the
+        # bassist is actually implying, rather than following the arc's
+        # harmonic plan blindly.
+        #
+        # ≥ 4 distinct pitch classes → bassist is clearly implying a scale
+        #   or mode; override the arc's scale bias with their pitch classes.
+        # 2–3 pitch classes → a motif or interval fragment; broaden the arc
+        #   scale by unioning in the bass notes so the sax stays compatible.
+        # 0–1 pitch classes → single pedal tone or empty; defer to the arc.
+        # ------------------------------------------------------------------
+        bass_pcs = features.get("bass_pitch_classes", frozenset())
+        MIN_PCS_FOR_OVERRIDE = 4
+
+        if len(bass_pcs) >= MIN_PCS_FOR_OVERRIDE:
+            scale_pcs    = bass_pcs        # sax follows bassist's harmonic language
+            scale_source = "bass"
+        elif len(bass_pcs) >= 2 and scale_pcs:
+            scale_pcs    = scale_pcs | bass_pcs   # broaden: arc + bass notes
+            scale_source = "blend"
+        else:
+            scale_source = "arc"           # arc harmony only
+
         contour_target = complement_contour(features)
 
         # Phrase length: longer when sax leads, shorter when following
@@ -242,6 +265,7 @@ class ArcController:
             "stage":               stage,
             "leadership":          self._leadership,
             "harmonic_mode":       self._harmony.current_mode_name(),
+            "scale_source":        scale_source,
         }
 
 
