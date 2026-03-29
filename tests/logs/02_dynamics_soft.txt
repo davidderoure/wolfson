@@ -1,0 +1,32 @@
+======================================================================
+  Dynamics — soft
+======================================================================
+
+Description: Same phrase at low velocity (vel=30). Sax should respond softly.
+
+Bass phrase:
+  Pitches:    E3 F3 G3 A3 C4 D4
+  Vel:        30
+  Duration:   2.92s
+
+Analysis:
+  note_density:    2.05 notes/sec
+  ambitus:         10 semitones
+  contour_slope:   +2.09
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   30
+  is_sparse:       False
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  sax_velocity:    40
+
+Sax response:
+  n notes:  8
+  Pitches:  F5 C5 A4 A4 Bb4 G4 F4 E4
+  Dur (b):  0.81 0.70 0.81 0.81 2.02 0.60 0.38 0.60

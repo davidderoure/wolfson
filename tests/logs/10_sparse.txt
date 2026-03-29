@@ -1,0 +1,32 @@
+======================================================================
+  Sparse phrase — sax fills space
+======================================================================
+
+Description: Two widely-spaced notes at low velocity. High sparsity score; sax responds with a longer, denser phrase to fill the space.
+
+Bass phrase:
+  Pitches:    E3 C4
+  Vel:        55
+  Duration:   1.85s
+
+Analysis:
+  note_density:    1.08 notes/sec
+  ambitus:         8 semitones
+  contour_slope:   +8.00
+  rhetorical_type: question
+  rhythmic_feel:   mixed (ratio=1.00)
+  mean_velocity:   55
+  is_sparse:       True
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      0.00
+  temperature:     0.90
+  sax_velocity:    55
+
+Sax response:
+  n notes:  12
+  Pitches:  B3 Ab3 E3 F#3 F3 F#3 G3 Ab3 B3 B3 Ab3 F#3
+  Dur (b):  0.81 0.60 0.70 0.70 0.60 0.70 1.28 0.70 0.95 1.49 0.60 0.20

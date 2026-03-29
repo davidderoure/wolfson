@@ -1,0 +1,32 @@
+======================================================================
+  Contour — question phrase
+======================================================================
+
+Description: Ascending phrase ending on a high note. Should be classified as 'question'; sax responds with descending 'answer' contour.
+
+Bass phrase:
+  Pitches:    C3 E3 G3 A3 C4 E4
+  Vel:        80
+  Duration:   2.92s
+
+Analysis:
+  note_density:    2.05 notes/sec
+  ambitus:         16 semitones
+  contour_slope:   +3.03
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   80
+  is_sparse:       False
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  sax_velocity:    80
+
+Sax response:
+  n notes:  8
+  Pitches:  A4 B4 B4 D5 B4 A5 E5 B4
+  Dur (b):  2.02 0.33 2.02 0.60 0.95 0.38 0.60 0.33

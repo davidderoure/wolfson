@@ -1,0 +1,32 @@
+======================================================================
+  Modal — D Dorian scale bias
+======================================================================
+
+Description: Phrase over Dm7 with D Dorian scale pitch bias active. Sax should favour D, E, F, G, A, B, C scale tones.
+
+Bass phrase:
+  Pitches:    D3 E3 F3 G3 A3 B3 C4 D4
+  Vel:        80
+  Duration:   3.92s
+
+Analysis:
+  note_density:    2.04 notes/sec
+  ambitus:         12 semitones
+  contour_slope:   +1.71
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   80
+  is_sparse:       False
+
+Generation parameters:
+  chord:           Dm
+  scale:           D dorian
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  sax_velocity:    80
+
+Sax response:
+  n notes:  8
+  Pitches:  A3 B4 A4 G4 F4 D4 F4 D4
+  Dur (b):  0.33 1.28 0.33 0.38 0.38 0.44 0.95 0.38

@@ -1,0 +1,32 @@
+======================================================================
+  Swing feel — detected, no extra bias
+======================================================================
+
+Description: Swung 8th notes (2:1 long-short ratio per beat). Swing ratio should be ~2.0; classified as 'swing'; no additional triplet bias applied to response.
+
+Bass phrase:
+  Pitches:    A3 C4 A3 G3 E3 D3 E3 G3
+  Vel:        80
+  Duration:   1.97s
+
+Analysis:
+  note_density:    4.05 notes/sec
+  ambitus:         10 semitones
+  contour_slope:   -0.93
+  rhetorical_type: question
+  rhythmic_feel:   swing (ratio=2.00)
+  mean_velocity:   80
+  is_sparse:       False
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      0.00
+  temperature:     0.90
+  sax_velocity:    80
+
+Sax response:
+  n notes:  8
+  Pitches:  F3 F#3 A3 F4 E4 D4 E4 G4
+  Dur (b):  0.60 0.52 0.52 0.52 0.38 0.44 0.24 0.52

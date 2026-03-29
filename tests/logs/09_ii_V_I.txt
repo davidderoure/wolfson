@@ -1,0 +1,43 @@
+======================================================================
+  ii-V-I progression
+======================================================================
+
+
+Description: Same bass phrase generated three times, each over a different chord: Dm7 (Dorian), G7 (Mixolydian), Cmaj (Ionian). Demonstrates chord-conditioned harmonic colour changing across the progression.
+
+Bass phrase:
+  Pitches:    E3 F3 G3 A3 C4 D4
+  Vel:        80
+  Duration:   2.92s
+
+Analysis:
+  note_density:    2.05 notes/sec
+  ambitus:         10 semitones
+  contour_slope:   +2.09
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   80
+  is_sparse:       False
+
+Generation parameters:
+  chord:           Dm
+  scale:           D dorian
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  sax_velocity:    80
+
+Sax response:
+  n notes:  8
+  Pitches:  E5 C5 A4 G5 A4 C5 A4 C5
+  Dur (b):  0.70 0.70 0.52 0.52 0.38 0.70 0.38 0.38
+
+  — Dm7 response above —
+
+  Over G7 (G mixolydian):
+  Pitches: E5 A5 B5 F5 F5 F5 E5 F5
+  Dur(b):  0.60 2.02 0.70 0.70 0.24 0.33 0.38 0.28
+
+  Over Cmaj (C ionian):
+  Pitches: A3 G3 D4 B3 A3 D4 A3 B3
+  Dur(b):  0.33 0.38 0.95 0.81 0.70 2.02 0.44 0.60

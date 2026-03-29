@@ -1,0 +1,32 @@
+======================================================================
+  Straight feel — triplet bias in response
+======================================================================
+
+Description: Even quarter notes (straight feel). Swing ratio ~1.0; classified as 'straight'; sax response gets triplet-grid duration bias for rhythmic contrast.
+
+Bass phrase:
+  Pitches:    A3 C4 A3 G3 E3 D3 E3 G3
+  Vel:        80
+  Duration:   3.92s
+
+Analysis:
+  note_density:    2.04 notes/sec
+  ambitus:         10 semitones
+  contour_slope:   -0.93
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   80
+  is_sparse:       False
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  sax_velocity:    80
+
+Sax response:
+  n notes:  8
+  Pitches:  F3 F#3 G3 A3 G3 F#3 G3 G3
+  Dur (b):  0.60 0.33 0.33 0.38 0.95 0.81 0.60 0.28

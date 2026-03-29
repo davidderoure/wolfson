@@ -1,0 +1,32 @@
+======================================================================
+  Basic call-response
+======================================================================
+
+Description: A simple ascending phrase. Tests that the system responds musically.
+
+Bass phrase:
+  Pitches:    E3 F3 G3 A3 C4 D4
+  Vel:        80
+  Duration:   2.92s
+
+Analysis:
+  note_density:    2.05 notes/sec
+  ambitus:         10 semitones
+  contour_slope:   +2.09
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   80
+  is_sparse:       False
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  sax_velocity:    80
+
+Sax response:
+  n notes:  8
+  Pitches:  G5 C#5 G4 Ab4 Bb4 A4 C5 Bb4
+  Dur (b):  0.33 0.52 1.28 0.81 0.60 0.60 1.28 0.70
