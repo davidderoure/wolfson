@@ -71,142 +71,58 @@ _HTML = """\
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>Wolfson</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  color-scheme:dark;
-  --c-sparse:#aaaaaa;
-  --c-building:#00ffff;
-  --c-peak:#ff4444;
-  --c-recap:#44ff44;
-  --c-res:#ffff44;
-  --bg:#0a0a0a;
-  --card:#161616;
-  --dim:#444;
-  --text:#ffffff;
-}
-body{
-  background:#0a0a0a;
-  color:#ffffff;
-  font-family:'Courier New',Courier,monospace;
-  padding:14px 14px env(safe-area-inset-bottom,14px);
-  min-height:100svh;
-  transition:box-shadow .05s;
-}
-body.pulse{box-shadow:inset 0 0 0 2px var(--pulse-color,#00ffff)}
-
-/* ---- header ---- */
-.hdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
-.hdr-title{color:#00ffff;font-size:1.15em;font-weight:bold;letter-spacing:3px}
-.hdr-info{color:#555;font-size:.8em}
-
-/* ---- arc bar ---- */
-.arc-wrap{margin-bottom:5px}
-.arc-bar{
-  display:flex;height:22px;border-radius:3px;overflow:hidden;
-  border:1px solid #222;
-}
-.arc-seg{height:100%;position:relative;transition:opacity .4s}
-.arc-labels{display:flex;margin-top:4px;margin-bottom:16px}
-.arc-lbl{
-  font-size:.55em;text-transform:uppercase;letter-spacing:.8px;
-  text-align:center;overflow:hidden;white-space:nowrap;
-  color:#333;padding:0 2px;
-}
-.arc-lbl.active{font-weight:bold;opacity:1}
-
-/* ---- stage ---- */
-.stage-row{
-  display:flex;justify-content:space-between;align-items:baseline;
-  margin-bottom:14px;
-}
-.stage-name{font-size:2em;font-weight:bold;text-transform:uppercase;letter-spacing:4px}
-.stage-rem{color:#555;font-size:.85em}
-
-/* ---- big numbers ---- */
-.nums-row{display:flex;gap:8px;margin-bottom:10px}
-.num-card{
-  flex:1;background:var(--card);border-radius:6px;
-  padding:10px 8px 8px;text-align:center;
-}
-.num-val{font-size:2em;font-weight:bold;color:#00ffff;line-height:1}
-.num-val.white{color:#fff}
-.num-unit{font-size:.6em;color:#444;margin-top:3px;letter-spacing:1px}
-
-/* ---- info cards ---- */
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.card{background:var(--card);border-radius:6px;padding:8px 10px}
-.card-lbl{color:#444;font-size:.6em;text-transform:uppercase;letter-spacing:1px}
-.card-val{font-size:.95em;margin-top:3px}
-.card-val.cyan{color:#00ffff}
-
-/* ---- notes ---- */
-.notes-wrap{min-height:38px;display:flex;flex-wrap:wrap;gap:6px;
-  align-items:center;margin-bottom:10px}
-.note{
-  border-radius:4px;padding:5px 9px;
-  font-size:.85em;font-weight:bold;color:#000;
-  transition:background .3s;
-}
-
-/* ---- trigger ---- */
-.trigger{text-align:center;font-size:.8em;color:#333;padding:6px;letter-spacing:1px}
-.trigger.bass{color:#00ffff}
-.trigger.sax{color:#ffff00}
-
-/* ---- offline ---- */
-.offline-msg{
-  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
-  background:#1a1a1a;border:1px solid #333;border-radius:6px;
-  padding:8px 16px;font-size:.75em;color:#555;
-  display:none;
-}
-.offline-msg.show{display:block}
-</style>
 </head>
-<body style="background:#0a0a0a;color:#ffffff;font-family:'Courier New',Courier,monospace">
+<body style="box-sizing:border-box;margin:0;padding:14px;background:#0a0a0a;color:#ffffff;font-family:'Courier New',Courier,monospace;min-height:100vh">
 
-<div class="hdr">
-  <span class="hdr-title" style="color:#00ffff">WOLFSON</span>
-  <span class="hdr-info" id="hdr-info" style="color:#888">&mdash;</span>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+  <span style="color:#00ffff;font-size:1.15em;font-weight:bold;letter-spacing:3px">WOLFSON</span>
+  <span id="hdr-info" style="color:#888;font-size:.8em">&mdash;</span>
 </div>
 
-<div class="arc-wrap">
-  <div class="arc-bar"   id="arc-bar"></div>
-  <div class="arc-labels" id="arc-labels"></div>
+<div style="margin-bottom:5px">
+  <div id="arc-bar"    style="display:flex;height:22px;border-radius:3px;overflow:hidden;border:1px solid #222"></div>
+  <div id="arc-labels" style="display:flex;margin-top:4px;margin-bottom:16px"></div>
 </div>
 
-<div class="stage-row">
-  <span class="stage-name" id="stage-name">&mdash;</span>
-  <span class="stage-rem"  id="stage-rem">&mdash;</span>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+  <span id="stage-name" style="font-size:2em;font-weight:bold;text-transform:uppercase;letter-spacing:4px;color:#ffffff">&mdash;</span>
+  <span id="stage-rem"  style="color:#888;font-size:.85em">&mdash;</span>
 </div>
 
-<div class="nums-row">
-  <div class="num-card">
-    <div class="num-val"       id="bpm">&mdash;</div>
-    <div class="num-unit">BPM</div>
+<div style="display:flex;gap:8px;margin-bottom:10px">
+  <div style="flex:1;background:#161616;border-radius:6px;padding:10px 8px 8px;text-align:center">
+    <div id="bpm"      style="font-size:2em;font-weight:bold;color:#00ffff;line-height:1">&mdash;</div>
+    <div style="font-size:.6em;color:#666;margin-top:3px;letter-spacing:1px">BPM</div>
   </div>
-  <div class="num-card">
-    <div class="num-val white" id="phrase-n">&mdash;</div>
-    <div class="num-unit">PHRASES</div>
+  <div style="flex:1;background:#161616;border-radius:6px;padding:10px 8px 8px;text-align:center">
+    <div id="phrase-n" style="font-size:2em;font-weight:bold;color:#ffffff;line-height:1">&mdash;</div>
+    <div style="font-size:.6em;color:#666;margin-top:3px;letter-spacing:1px">PHRASES</div>
   </div>
 </div>
 
-<div class="cards">
-  <div class="card"><div class="card-lbl">Harmony</div>
-    <div class="card-val cyan" id="harm">&mdash;</div></div>
-  <div class="card"><div class="card-lbl">Scale</div>
-    <div class="card-val"      id="scale">&mdash;</div></div>
-  <div class="card"><div class="card-lbl">Contour</div>
-    <div class="card-val"      id="contour">&mdash;</div></div>
-  <div class="card"><div class="card-lbl">Velocity</div>
-    <div class="card-val"      id="vel">&mdash;</div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+  <div style="background:#161616;border-radius:6px;padding:8px 10px">
+    <div style="color:#666;font-size:.6em;text-transform:uppercase;letter-spacing:1px">Harmony</div>
+    <div id="harm"    style="font-size:.95em;margin-top:3px;color:#00ffff">&mdash;</div>
+  </div>
+  <div style="background:#161616;border-radius:6px;padding:8px 10px">
+    <div style="color:#666;font-size:.6em;text-transform:uppercase;letter-spacing:1px">Scale</div>
+    <div id="scale"   style="font-size:.95em;margin-top:3px;color:#ffffff">&mdash;</div>
+  </div>
+  <div style="background:#161616;border-radius:6px;padding:8px 10px">
+    <div style="color:#666;font-size:.6em;text-transform:uppercase;letter-spacing:1px">Contour</div>
+    <div id="contour" style="font-size:.95em;margin-top:3px;color:#ffffff">&mdash;</div>
+  </div>
+  <div style="background:#161616;border-radius:6px;padding:8px 10px">
+    <div style="color:#666;font-size:.6em;text-transform:uppercase;letter-spacing:1px">Velocity</div>
+    <div id="vel"     style="font-size:.95em;margin-top:3px;color:#ffffff">&mdash;</div>
+  </div>
 </div>
 
-<div class="notes-wrap" id="notes"></div>
-<div class="trigger"    id="trigger">waiting&hellip;</div>
+<div id="notes"   style="min-height:38px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
+<div id="trigger" style="text-align:center;font-size:.8em;color:#555;padding:6px;letter-spacing:1px">waiting&hellip;</div>
 
-<div class="offline-msg" id="offline">reconnecting&hellip;</div>
+<div id="offline" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:8px 16px;font-size:.75em;color:#888">reconnecting&hellip;</div>
 
 <script>
 const STAGES = [
@@ -228,20 +144,18 @@ function fmtTime(sec) {
 }
 
 function buildArc(elapsed) {
-  const bar = document.getElementById("arc-bar");
+  const bar  = document.getElementById("arc-bar");
   const lbls = document.getElementById("arc-labels");
   bar.innerHTML = ""; lbls.innerHTML = "";
   STAGES.forEach(seg => {
-    // bar segment
     const d = document.createElement("div");
-    d.className = "arc-seg";
-    d.style.width = seg.pct + "%";
+    d.style.cssText = "height:100%;position:relative;width:" + seg.pct + "%";
     if (elapsed <= seg.start) {
-      d.style.background = seg.color + "1e";   // very dim future
+      d.style.background = seg.color + "1e";
     } else if (elapsed >= seg.end) {
-      d.style.background = seg.color;          // fully done
+      d.style.background = seg.color;
     } else {
-      const f = (elapsed - seg.start) / (seg.end - seg.start);
+      const f   = (elapsed - seg.start) / (seg.end - seg.start);
       const pct = (f * 100).toFixed(1);
       d.style.background =
         "linear-gradient(to right," + seg.color + " " + pct + "%," +
@@ -249,22 +163,29 @@ function buildArc(elapsed) {
     }
     bar.appendChild(d);
 
-    // label
     const l = document.createElement("div");
-    l.className = "arc-lbl" +
-      (elapsed >= seg.start && elapsed < seg.end ? " active" : "");
-    l.style.width = seg.pct + "%";
-    l.style.color = elapsed >= seg.start ? seg.color : "#333";
+    const isActive = elapsed >= seg.start && elapsed < seg.end;
+    l.style.cssText = "font-size:.55em;text-transform:uppercase;letter-spacing:.8px;" +
+      "text-align:center;overflow:hidden;white-space:nowrap;padding:0 2px;" +
+      "width:" + seg.pct + "%;font-weight:" + (isActive ? "bold" : "normal") + ";";
+    l.style.color = elapsed >= seg.start ? seg.color : "#444";
     l.textContent = seg.short;
     lbls.appendChild(l);
   });
+}
+
+var _pulseTimer = null;
+function pulse(color) {
+  if (_pulseTimer) clearTimeout(_pulseTimer);
+  document.body.style.boxShadow = "inset 0 0 0 2px " + color;
+  _pulseTimer = setTimeout(function(){ document.body.style.boxShadow = "none"; }, 600);
 }
 
 function update(state) {
   const elapsed   = state.elapsed || 0;
   const remaining = Math.max(0, 300 - elapsed);
   const stage     = state.stage || "";
-  const stageCol  = STAGE_COLOR[stage] || "#fff";
+  const stageCol  = STAGE_COLOR[stage] || "#ffffff";
 
   document.getElementById("hdr-info").textContent =
     "t=" + fmtTime(elapsed) + "  #" + (state.phrase_count || 0);
@@ -272,8 +193,8 @@ function update(state) {
   buildArc(elapsed);
 
   const sn = document.getElementById("stage-name");
-  sn.textContent   = stage.toUpperCase().replace("RECAPITULATION","RECAP");
-  sn.style.color   = stageCol;
+  sn.textContent = stage.toUpperCase().replace("RECAPITULATION","RECAP");
+  sn.style.color = stageCol;
   document.getElementById("stage-rem").textContent = fmtTime(remaining) + " left";
 
   document.getElementById("bpm").textContent =
@@ -281,19 +202,18 @@ function update(state) {
   document.getElementById("phrase-n").textContent = state.phrase_count || "—";
 
   document.getElementById("harm").textContent    = state.harmonic_mode || "—";
-  document.getElementById("scale").textContent   = (state.scale_source  || "—").toUpperCase();
+  document.getElementById("scale").textContent   = (state.scale_source || "—").toUpperCase();
   const ct = state.contour_target || "";
-  document.getElementById("contour").textContent =
-    (ARROWS[ct] || "") + " " + ct;
+  document.getElementById("contour").textContent = (ARROWS[ct] || "") + " " + ct;
   document.getElementById("vel").textContent     = state.velocity || "—";
 
   const notesEl = document.getElementById("notes");
   notesEl.innerHTML = "";
-  (state.note_names || []).forEach(n => {
+  (state.note_names || []).forEach(function(n) {
     const chip = document.createElement("span");
-    chip.className     = "note";
-    chip.style.background = stageCol;
-    chip.textContent   = n;
+    chip.style.cssText = "border-radius:4px;padding:5px 9px;font-size:.85em;" +
+      "font-weight:bold;color:#000000;background:" + stageCol;
+    chip.textContent = n;
     notesEl.appendChild(chip);
   });
 
@@ -301,31 +221,26 @@ function update(state) {
   const tb   = state.triggered_by || "";
   if (tb === "bass") {
     trig.textContent  = "⟵  bass phrase";
-    trig.className    = "trigger bass";
+    trig.style.color  = "#00ffff";
   } else if (tb === "sax") {
     trig.textContent  = "◎  sax initiates";
-    trig.className    = "trigger sax";
+    trig.style.color  = "#ffff00";
   } else {
     trig.textContent  = "…";
-    trig.className    = "trigger";
+    trig.style.color  = "#555";
   }
 
-  // pulse border in stage colour
-  document.body.style.setProperty("--pulse-color", stageCol);
-  document.body.classList.remove("pulse");
-  void document.body.offsetWidth;   // force reflow
-  document.body.classList.add("pulse");
-  setTimeout(() => document.body.classList.remove("pulse"), 600);
+  pulse(stageCol);
 }
 
 function connect() {
   const src = new EventSource("/stream");
   const off = document.getElementById("offline");
-  src.onopen    = () => off.classList.remove("show");
-  src.onmessage = e => { try { update(JSON.parse(e.data)); } catch(_){} };
-  src.onerror   = () => {
+  src.onopen    = function() { off.style.display = "none"; };
+  src.onmessage = function(e) { try { update(JSON.parse(e.data)); } catch(_){} };
+  src.onerror   = function() {
     src.close();
-    off.classList.add("show");
+    off.style.display = "block";
     setTimeout(connect, 3000);
   };
 }
