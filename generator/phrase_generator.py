@@ -79,8 +79,15 @@ ENERGY_DUR_STRENGTH   = 0.8  # max duration logit bias from arc
 MOTIF_BIAS_STRENGTH   = 2.0  # logit bias for motif-continuation pitch token
 
 # Voice leading
-VOICE_LEADING_STRENGTH = 1.0  # max chord-tone boost (scales with arc_position)
+VOICE_LEADING_STRENGTH = 0.6  # max chord-tone boost (scales with arc_position)
+                               # reduced from 1.0 — prevents over-sticky cadences
 STEPWISE_BIAS_STRENGTH = 0.4  # gentle bias toward ±1–2 semitone motion
+
+# Repetition penalty — discourages consecutive repeated notes
+# Grows with the number of consecutive repeats so an occasional same-note
+# passing tone is allowed but long runs are strongly suppressed.
+REPEAT_PENALTY_BASE    = 1.5  # logit penalty for first immediate repeat
+REPEAT_PENALTY_SCALE   = 1.0  # additional penalty per further consecutive repeat
 
 
 class PhraseGenerator:
@@ -150,9 +157,10 @@ class PhraseGenerator:
         tok_tensor   = torch.tensor([seed_tokens], dtype=torch.long)
         chord_tensor = torch.tensor([seed_chords], dtype=torch.long)
 
-        generated_tokens = []
-        hidden           = None
-        last_pitch_token = -1   # most recent generated pitch token; -1 = none yet
+        generated_tokens    = []
+        hidden              = None
+        last_pitch_token    = -1   # most recent generated pitch token; -1 = none yet
+        consecutive_repeats = 0    # how many times last_pitch_token has been repeated
 
         # Reduce contour strength when energy arc is also active (shared budget)
         contour_strength = (
@@ -212,6 +220,12 @@ class PhraseGenerator:
                         tok_logits, arc_position, chord_idx, last_pitch_token,
                     )
 
+                    # Repetition penalty — suppress running on the same note
+                    if last_pitch_token >= 0 and consecutive_repeats > 0:
+                        tok_logits = _apply_repeat_penalty(
+                            tok_logits, last_pitch_token, consecutive_repeats,
+                        )
+
                 elif expecting == "duration":
                     # Triplet/swing bias
                     if swing_bias > 0.0:
@@ -234,6 +248,10 @@ class PhraseGenerator:
                 last_chord = torch.tensor([[chord_idx]], dtype=torch.long)
 
                 if expecting == "pitch":
+                    if token == last_pitch_token:
+                        consecutive_repeats += 1
+                    else:
+                        consecutive_repeats  = 0
                     last_pitch_token = token
                     note_count += 1
                     expecting = "duration"
@@ -508,6 +526,27 @@ def _apply_motif_bias(
 # ---------------------------------------------------------------------------
 # Bias helpers — voice leading
 # ---------------------------------------------------------------------------
+
+def _apply_repeat_penalty(
+    logits:              torch.Tensor,
+    last_pitch_token:    int,
+    consecutive_repeats: int,
+) -> torch.Tensor:
+    """
+    Apply a negative logit bias to the last generated pitch token, growing
+    with the number of consecutive repeats.
+
+    One immediate repeat (passing tone / ornament) is lightly penalised.
+    Longer runs are progressively suppressed, preventing the Morse-code
+    effect where the model locks onto a single pitch.
+
+    penalty = REPEAT_PENALTY_BASE + (consecutive_repeats - 1) * REPEAT_PENALTY_SCALE
+    """
+    penalty = REPEAT_PENALTY_BASE + (consecutive_repeats - 1) * REPEAT_PENALTY_SCALE
+    bias    = torch.zeros(VOCAB_SIZE)
+    bias[last_pitch_token] = -penalty
+    return logits + bias
+
 
 def _apply_voice_leading_bias(
     logits:           torch.Tensor,

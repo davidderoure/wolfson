@@ -41,7 +41,11 @@ from output.osc_output      import OscOutput
 from config import (
     DEFAULT_INSTRUMENT, TEMPO_HINT_BPM,
     DASHBOARD_ENABLED, OSC_ENABLED, OSC_HOST, OSC_PORT,
+    ARC,
 )
+
+# Total arc duration in seconds (end of the last stage)
+ARC_DURATION_SEC = max(end for _, end in ARC.values())
 
 PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
 
@@ -288,7 +292,9 @@ def main():
                     "offset":       now + onset + dur_sec,
                     "beat_dur_sec": beat_dur_sec,
                 })
-                beats.note_on(now + onset)   # keep tempo estimator warm
+                # Do NOT call beats.note_on() in self-play — the generated
+                # note IOIs are at the generation tempo, not the live-input
+                # tempo, and would cause the estimator to runaway to 300+ BPM.
                 onset += dur_sec
             on_bass_phrase(phrase)
 
@@ -301,6 +307,11 @@ def main():
     def _proactive_loop():
         while _running.is_set():
             time.sleep(PROACTIVE_CHECK_INTERVAL)
+            # Auto-stop self-play at arc completion (300s)
+            if self_play and arc.elapsed() >= ARC_DURATION_SEC:
+                print("\nArc complete. Stopping.")
+                _running.clear()
+                break
             if arc.should_play_proactively():
                 params = arc.get_proactive_params()
                 if params:
