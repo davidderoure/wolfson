@@ -69,10 +69,12 @@ _HTML = """\
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>Wolfson</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
+  color-scheme:dark;
   --c-sparse:#aaaaaa;
   --c-building:#00ffff;
   --c-peak:#ff4444;
@@ -84,8 +86,8 @@ _HTML = """\
   --text:#ffffff;
 }
 body{
-  background:var(--bg);
-  color:var(--text);
+  background:#0a0a0a;
+  color:#ffffff;
   font-family:'Courier New',Courier,monospace;
   padding:14px 14px env(safe-area-inset-bottom,14px);
   min-height:100svh;
