@@ -1,0 +1,41 @@
+======================================================================
+  Motivic development — blues cell
+======================================================================
+
+Description: Motif target: (3, -2, -1) — a classic blues cell: minor third up, then step down, then semitone down (e.g. C→Eb→D→C#). Strength 0.8. With multiple notes the bias should create recognisable inflections toward this chromatic-blues shape.
+
+Bass phrase:
+  Pitches:       C4 D4 E4 F4 G4 F4 E4 D4
+  Tempo:         120 BPM
+  Vel:           80
+  Duration:      3.92s
+
+Analysis:
+  note_density:    2.04 notes/sec
+  ambitus:         7 semitones
+  contour_slope:   +0.35
+  rhetorical_type: answer
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   80
+  is_sparse:       False
+  energy_profile:  arch
+  interval_motifs: [(2, 2), (2, 1), (1, 2), (2, -2), (-2, -1), (-1, -2)] ...
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  question
+  swing_bias:      1.00
+  temperature:     0.90
+  phrase_energy_arc: ramp_down
+  motif_targets:   [(3, -2, -1)]
+  motif_strength:  0.80
+  sax_velocity:    80
+
+Sax response:
+  n notes:    12
+  Pitches:    Eb5 C#5 B4 G4 B4 A4 B4 G4 E4 G4 B4 C5
+  Dur (b):    0.70 0.38 0.44 0.33 0.81 0.33 0.38 1.28 0.38 0.60 0.38 2.02
+  Dur (s):    0.35 0.19 0.22 0.16 0.41 0.16 0.19 0.64 0.19 0.30 0.19 1.01
+  Vel scale:  1.25 1.20 1.16 1.11 1.07 1.02 0.98 0.93 0.89 0.84 0.80 0.75
+  Velocity:   100 96 92 89 85 81 78 74 70 67 63 60

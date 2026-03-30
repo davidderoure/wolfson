@@ -5,10 +5,10 @@
 Description: Phrase over Dm7 with D Dorian scale pitch bias active. Sax should favour D, E, F, G, A, B, C scale tones.
 
 Bass phrase:
-  Pitches:    D3 E3 F3 G3 A3 B3 C4 D4
-  Tempo:      120 BPM
-  Vel:        80
-  Duration:   3.92s
+  Pitches:       D3 E3 F3 G3 A3 B3 C4 D4
+  Tempo:         120 BPM
+  Vel:           80
+  Duration:      3.92s
 
 Analysis:
   note_density:    2.04 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   80
   is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(2, 1), (1, 2), (2, 2), (2, 2), (2, 1), (1, 2)] ...
 
 Generation parameters:
   chord:           Dm
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    80
 
 Sax response:
-  n notes:  8
-  Pitches:  E3 F3 D4 D4 A3 G3 E4 A4
-  Dur (b):  0.81 0.60 0.81 1.49 1.10 0.60 0.28 0.70
-  Dur (s):  0.41 0.30 0.41 0.75 0.55 0.30 0.14 0.35
+  n notes:    8
+  Pitches:    B3 A3 G3 F3 E3 F3 A3 B3
+  Dur (b):    0.81 0.52 0.33 0.28 0.28 0.24 2.35 0.28
+  Dur (s):    0.41 0.26 0.16 0.14 0.14 0.12 1.18 0.14
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   60 71 82 94 94 82 71 60

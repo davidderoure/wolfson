@@ -6,10 +6,10 @@
 Description: Same bass phrase generated three times, each over a different chord: Dm7 (Dorian), G7 (Mixolydian), Cmaj (Ionian). Demonstrates chord-conditioned harmonic colour changing across the progression.
 
 Bass phrase:
-  Pitches:    E3 F3 G3 A3 C4 D4
-  Tempo:      120 BPM
-  Vel:        80
-  Duration:   2.92s
+  Pitches:       E3 F3 G3 A3 C4 D4
+  Tempo:         120 BPM
+  Vel:           80
+  Duration:      2.92s
 
 Analysis:
   note_density:    2.05 notes/sec
@@ -19,6 +19,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   80
   is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(1, 2), (2, 2), (2, 3), (3, 2), (1, 2, 2), (2, 2, 3)] ...
 
 Generation parameters:
   chord:           Dm
@@ -26,20 +28,25 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    80
 
 Sax response:
-  n notes:  8
-  Pitches:  A4 A5 G5 A4 D5 E5 D5 D5
-  Dur (b):  0.95 0.70 0.95 0.70 0.28 1.28 0.70 0.28
-  Dur (s):  0.47 0.35 0.47 0.35 0.14 0.64 0.35 0.14
+  n notes:    8
+  Pitches:    G3 E3 F3 F3 A3 F3 F3 E3
+  Dur (b):    0.60 0.44 0.38 0.33 0.38 0.60 1.49 0.52
+  Dur (s):    0.30 0.22 0.19 0.16 0.19 0.30 0.75 0.26
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   60 71 82 94 94 82 71 60
 
   — Dm7 response above —
 
   Over G7 (G mixolydian):
-  Pitches: D5 D5 F4 Bb4 D4 E4 B3 D4
-  Dur(b):  0.60 1.28 0.33 0.60 0.60 0.60 0.60 0.70
+  Pitches: A5 G5 A5 Bb5 G5 F5 E5 D5
+  Dur(b):  0.52 0.44 0.38 0.33 0.24 0.38 0.28 0.38
 
   Over Cmaj (C ionian):
-  Pitches: A3 E5 D5 C#5 D5 B4 D5 C5
-  Dur(b):  0.38 1.28 0.81 0.38 0.81 0.95 0.44 0.44
+  Pitches: C5 B4 D5 D5 B4 C5 B4 G4
+  Dur(b):  0.81 1.49 0.60 0.38 0.44 0.33 0.60 0.70

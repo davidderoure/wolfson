@@ -5,10 +5,10 @@
 Description: Two widely-spaced notes at low velocity. High sparsity score; sax responds with a longer, denser phrase to fill the space.
 
 Bass phrase:
-  Pitches:    E3 C4
-  Tempo:      120 BPM
-  Vel:        55
-  Duration:   1.85s
+  Pitches:       E3 C4
+  Tempo:         120 BPM
+  Vel:           55
+  Duration:      1.85s
 
 Analysis:
   note_density:    1.08 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   mixed (ratio=1.00)
   mean_velocity:   55
   is_sparse:       True
+  energy_profile:  flat
+  interval_motifs: []
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      0.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    55
 
 Sax response:
-  n notes:  12
-  Pitches:  F3 B3 C4 A3 Bb3 B3 F3 E3 G3 C4 Eb4 E4
-  Dur (b):  1.74 2.74 0.70 0.70 0.52 0.95 0.52 0.95 0.95 1.74 0.70 0.60
-  Dur (s):  0.87 1.37 0.35 0.35 0.26 0.47 0.26 0.47 0.47 0.87 0.35 0.30
+  n notes:    12
+  Pitches:    A5 C#5 A5 G5 Eb5 C5 C#5 Eb5 Ab5 Ab5 G5 C#5
+  Dur (b):    2.02 0.21 0.28 0.21 0.24 0.28 0.33 0.20 0.20 0.21 0.24 0.21
+  Dur (s):    1.01 0.10 0.14 0.10 0.12 0.14 0.16 0.10 0.10 0.10 0.12 0.10
+  Vel scale:  0.75 0.84 0.93 1.02 1.11 1.20 1.20 1.11 1.02 0.93 0.84 0.75
+  Velocity:   41 46 51 56 61 66 66 61 56 51 46 41

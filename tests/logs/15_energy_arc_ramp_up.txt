@@ -1,0 +1,41 @@
+======================================================================
+  Energy arc — ramp_up bass → arch sax
+======================================================================
+
+Description: Bass phrase with rising pitch and increasing velocity (clear ramp_up profile). energy_profile should be detected as 'ramp_up'; complement gives sax 'arch'. Sax velocity_scale should peak near the midpoint then fall. Watch the Vel scale row in the response to confirm the internal dynamic shape.
+
+Bass phrase:
+  Pitches:       E3 F#3 A3 B3 D4 E4 G4
+  Tempo:         120 BPM
+  Vel:           50
+  Duration:      3.42s
+
+Analysis:
+  note_density:    2.04 notes/sec
+  ambitus:         15 semitones
+  contour_slope:   +2.50
+  rhetorical_type: question
+  rhythmic_feel:   straight (ratio=1.00)
+  mean_velocity:   71
+  is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(2, 3), (3, 2), (2, 3), (3, 2), (2, 3), (2, 3, 2)] ...
+
+Generation parameters:
+  chord:           NC
+  scale:           chromatic
+  contour_target:  answer
+  swing_bias:      1.00
+  temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
+  sax_velocity:    71
+
+Sax response:
+  n notes:    8
+  Pitches:    C#5 E5 A5 B5 A5 B5 G5 A5
+  Dur (b):    0.81 0.38 0.38 0.33 0.28 1.49 0.38 0.33
+  Dur (s):    0.41 0.19 0.19 0.16 0.14 0.75 0.19 0.16
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   53 63 73 83 83 73 63 53

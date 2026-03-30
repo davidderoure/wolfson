@@ -5,10 +5,10 @@
 Description: Same phrase at high velocity (vel=100). Sax should respond loudly.
 
 Bass phrase:
-  Pitches:    E3 F3 G3 A3 C4 D4
-  Tempo:      120 BPM
-  Vel:        100
-  Duration:   2.92s
+  Pitches:       E3 F3 G3 A3 C4 D4
+  Tempo:         120 BPM
+  Vel:           100
+  Duration:      2.92s
 
 Analysis:
   note_density:    2.05 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   100
   is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(1, 2), (2, 2), (2, 3), (3, 2), (1, 2, 2), (2, 2, 3)] ...
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    100
 
 Sax response:
-  n notes:  8
-  Pitches:  D5 B4 D5 B4 Bb4 G4 F4 B4
-  Dur (b):  0.81 0.70 0.70 0.70 0.70 0.95 0.60 1.49
-  Dur (s):  0.41 0.35 0.35 0.35 0.35 0.47 0.30 0.75
+  n notes:    8
+  Pitches:    D5 Ab5 C5 D5 C5 Bb4 A4 Bb4
+  Dur (b):    2.02 1.10 0.38 0.44 0.38 0.38 0.38 0.38
+  Dur (s):    1.01 0.55 0.19 0.22 0.19 0.19 0.19 0.19
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   75 89 103 110 110 103 89 75

@@ -1,8 +1,8 @@
 ======================================================================
-  Basic call-response
+  Voice leading — G7 endpoint targeting
 ======================================================================
 
-Description: A simple ascending phrase. Tests that the system responds musically.
+Description: Over G7, chord tones are G (7), B (11), F (5). The voice-leading bias should pull the phrase toward a cadential landing on one of these tones. Compare the final note with test 20 — a different chord should produce a different target register. Also note the stepwise motion bias creating smoother intervals throughout.
 
 Bass phrase:
   Pitches:       E3 F3 G3 A3 C4 D4
@@ -22,8 +22,8 @@ Analysis:
   interval_motifs: [(1, 2), (2, 2), (2, 3), (3, 2), (1, 2, 2), (2, 2, 3)] ...
 
 Generation parameters:
-  chord:           NC
-  scale:           chromatic
+  chord:           G7
+  scale:           G mixolydian
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
@@ -33,9 +33,9 @@ Generation parameters:
   sax_velocity:    80
 
 Sax response:
-  n notes:    8
-  Pitches:    A5 G5 G5 Ab5 Bb5 G5 A5 G5
-  Dur (b):    0.44 3.19 0.70 0.44 2.02 0.81 0.60 0.70
-  Dur (s):    0.22 1.59 0.35 0.22 1.01 0.41 0.30 0.35
-  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
-  Velocity:   60 71 82 94 94 82 71 60
+  n notes:    10
+  Pitches:    E5 E5 B4 A4 A4 B4 B4 B4 C5 B4
+  Dur (b):    0.70 0.70 0.38 0.33 0.38 0.33 0.60 0.38 0.38 0.38
+  Dur (s):    0.35 0.35 0.19 0.16 0.19 0.16 0.30 0.19 0.19 0.19
+  Vel scale:  0.75 0.86 0.97 1.08 1.19 1.19 1.08 0.97 0.86 0.75
+  Velocity:   60 68 77 86 95 95 86 77 68 60

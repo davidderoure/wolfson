@@ -5,10 +5,10 @@
 Description: Swung 8th notes (2:1 long-short ratio per beat). Swing ratio should be ~2.0; classified as 'swing'; no additional triplet bias applied to response.
 
 Bass phrase:
-  Pitches:    A3 C4 A3 G3 E3 D3 E3 G3
-  Tempo:      120 BPM
-  Vel:        80
-  Duration:   1.97s
+  Pitches:       A3 C4 A3 G3 E3 D3 E3 G3
+  Tempo:         120 BPM
+  Vel:           80
+  Duration:      1.97s
 
 Analysis:
   note_density:    4.05 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   swing (ratio=2.00)
   mean_velocity:   80
   is_sparse:       False
+  energy_profile:  ramp_down
+  interval_motifs: [(3, -3), (-3, -2), (-2, -3), (-3, -2), (-2, 2), (2, 3)] ...
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      0.00
   temperature:     0.90
+  phrase_energy_arc: ramp_up
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    80
 
 Sax response:
-  n notes:  8
-  Pitches:  F3 E3 G3 A3 D4 Eb4 D4 F#4
-  Dur (b):  0.95 0.60 0.28 0.28 0.38 0.24 0.52 0.38
-  Dur (s):  0.47 0.30 0.14 0.14 0.19 0.12 0.26 0.19
+  n notes:    8
+  Pitches:    G3 Ab3 E3 F3 Ab3 Bb3 C4 Ab3
+  Dur (b):    0.60 0.33 0.52 0.33 0.60 0.38 0.44 0.60
+  Dur (s):    0.30 0.16 0.26 0.16 0.30 0.19 0.22 0.30
+  Vel scale:  0.75 0.82 0.89 0.96 1.04 1.11 1.18 1.25
+  Velocity:   60 65 71 77 82 88 94 100

@@ -2,13 +2,13 @@
   Tempo — 60 BPM (ballad)
 ======================================================================
 
-Description: Same ascending motif at 60 BPM. Each beat is 1.0s; the phrase spans 6s. Compare sax response shape and note density with tests 01/12/13/14 to see if tempo influences phrase character.
+Description: Same ascending motif at 60 BPM. Each beat is 1.0s; the phrase spans 6s. Compare sax response shape and note density with tests 01/12/13/14.
 
 Bass phrase:
-  Pitches:    E3 F3 G3 A3 C4 D4
-  Tempo:      60 BPM
-  Vel:        80
-  Duration:   5.85s
+  Pitches:       E3 F3 G3 A3 C4 D4
+  Tempo:         60 BPM
+  Vel:           80
+  Duration:      5.85s
 
 Analysis:
   note_density:    1.03 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   80
   is_sparse:       True
+  energy_profile:  ramp_up
+  interval_motifs: [(1, 2), (2, 2), (2, 3), (3, 2), (1, 2, 2), (2, 2, 3)] ...
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    80
 
 Sax response:
-  n notes:  8
-  Pitches:  A4 C#5 Bb4 Ab4 F#4 F4 Eb4 C#4
-  Dur (b):  1.28 1.74 0.81 0.70 0.95 0.95 0.81 0.70
-  Dur (s):  1.28 1.74 0.81 0.70 0.95 0.95 0.81 0.70
+  n notes:    8
+  Pitches:    D5 E5 E5 B4 C5 A4 C4 A3
+  Dur (b):    0.70 0.28 0.44 0.70 0.70 0.81 1.28 1.10
+  Dur (s):    0.70 0.28 0.44 0.70 0.70 0.81 1.28 1.10
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   60 71 82 94 94 82 71 60

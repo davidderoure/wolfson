@@ -2,13 +2,13 @@
   Tempo — 200 BPM (very fast)
 ======================================================================
 
-Description: Same ascending motif at 200 BPM. Each beat is 0.3s; the phrase spans 1.8s. Tests how the system handles very fast tempos where the beat estimator may struggle with subdivision ambiguity.
+Description: Same ascending motif at 200 BPM. Each beat is 0.3s. Tests how the system handles very fast tempos.
 
 Bass phrase:
-  Pitches:    E3 F3 G3 A3 C4 D4
-  Tempo:      200 BPM
-  Vel:        80
-  Duration:   1.75s
+  Pitches:       E3 F3 G3 A3 C4 D4
+  Tempo:         200 BPM
+  Vel:           80
+  Duration:      1.75s
 
 Analysis:
   note_density:    3.42 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   80
   is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(1, 2), (2, 2), (2, 3), (3, 2), (1, 2, 2), (2, 2, 3)] ...
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    80
 
 Sax response:
-  n notes:  8
-  Pitches:  E5 E5 A5 G5 A5 B5 G5 A5
-  Dur (b):  2.35 0.60 0.70 0.38 2.74 0.52 1.74 0.60
-  Dur (s):  0.71 0.18 0.21 0.11 0.82 0.15 0.52 0.18
+  n notes:    8
+  Pitches:    F5 F5 D5 Eb5 G4 Bb4 A4 C5
+  Dur (b):    1.10 0.38 0.33 0.70 0.28 1.10 1.28 1.10
+  Dur (s):    0.33 0.11 0.10 0.21 0.08 0.33 0.38 0.33
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   60 71 82 94 94 82 71 60

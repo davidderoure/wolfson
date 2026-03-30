@@ -5,10 +5,10 @@
 Description: Same phrase at low velocity (vel=30). Sax should respond softly.
 
 Bass phrase:
-  Pitches:    E3 F3 G3 A3 C4 D4
-  Tempo:      120 BPM
-  Vel:        30
-  Duration:   2.92s
+  Pitches:       E3 F3 G3 A3 C4 D4
+  Tempo:         120 BPM
+  Vel:           30
+  Duration:      2.92s
 
 Analysis:
   note_density:    2.05 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   30
   is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(1, 2), (2, 2), (2, 3), (3, 2), (1, 2, 2), (2, 2, 3)] ...
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    40
 
 Sax response:
-  n notes:  8
-  Pitches:  C5 A4 Ab4 F4 D4 C4 Ab3 A3
-  Dur (b):  3.71 0.70 2.02 0.38 0.60 1.49 0.70 1.74
-  Dur (s):  1.85 0.35 1.01 0.19 0.30 0.75 0.35 0.87
+  n notes:    8
+  Pitches:    C5 G4 Bb4 C5 Bb4 C5 G4 Bb4
+  Dur (b):    0.81 1.10 1.28 0.38 0.33 0.60 1.28 0.95
+  Dur (s):    0.41 0.55 0.64 0.19 0.16 0.30 0.64 0.47
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   40 40 41 47 47 41 40 40

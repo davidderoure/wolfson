@@ -5,10 +5,10 @@
 Description: Ascending phrase ending on a high note. Should be classified as 'question'; sax responds with descending 'answer' contour.
 
 Bass phrase:
-  Pitches:    C3 E3 G3 A3 C4 E4
-  Tempo:      120 BPM
-  Vel:        80
-  Duration:   2.92s
+  Pitches:       C3 E3 G3 A3 C4 E4
+  Tempo:         120 BPM
+  Vel:           80
+  Duration:      2.92s
 
 Analysis:
   note_density:    2.05 notes/sec
@@ -18,6 +18,8 @@ Analysis:
   rhythmic_feel:   straight (ratio=1.00)
   mean_velocity:   80
   is_sparse:       False
+  energy_profile:  ramp_up
+  interval_motifs: [(4, 3), (3, 2), (2, 3), (3, 4), (4, 3, 2), (3, 2, 3)] ...
 
 Generation parameters:
   chord:           NC
@@ -25,10 +27,15 @@ Generation parameters:
   contour_target:  answer
   swing_bias:      1.00
   temperature:     0.90
+  phrase_energy_arc: arch
+  motif_targets:   []
+  motif_strength:  0.00
   sax_velocity:    80
 
 Sax response:
-  n notes:  8
-  Pitches:  Eb5 C#5 C5 A4 C5 B4 G4 Eb4
-  Dur (b):  0.60 0.95 0.95 0.33 0.81 1.28 0.52 2.02
-  Dur (s):  0.30 0.47 0.47 0.16 0.41 0.64 0.26 1.01
+  n notes:    8
+  Pitches:    E5 F5 E5 F5 Eb5 D5 E5 Eb5
+  Dur (b):    0.24 0.33 0.38 0.38 0.38 0.28 0.28 1.10
+  Dur (s):    0.12 0.16 0.19 0.19 0.19 0.14 0.14 0.55
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   60 71 82 94 94 82 71 60
