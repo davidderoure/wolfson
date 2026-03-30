@@ -226,6 +226,35 @@ python main.py --dashboard
 python main.py --self-play --dashboard
 ```
 
+#### Audience web display
+
+Pass `--web` to serve a mobile-optimised display page on the local network. Any audience member on the same WiFi can open the URL in their phone browser — no app required.
+
+```bash
+python main.py --web                      # serves on port 5000
+python main.py --web --web-port 8080      # custom port
+python main.py --self-play --web --dashboard
+```
+
+At startup the terminal prints the URL to share:
+
+```
+Audience display:  http://192.168.1.42:5000
+  Share this URL with the audience (same WiFi network).
+```
+
+The page shows:
+- **Arc progress bar** — five colour-coded segments (sparse grey, building cyan, peak red, recapitulation green, resolution yellow); each segment fills as the performance progresses with the current stage partially highlighted
+- **Stage name** in large type, coloured by stage, with time remaining
+- **BPM** and phrase count as large numbers
+- **Harmony, scale, contour, velocity** as info cards
+- **Last phrase note names** as coloured chips (in the current stage colour)
+- **Trigger indicator** — `⟵ bass phrase` or `◎ sax initiates`
+- **Pulse animation** — a brief coloured border flash on every new phrase
+- Auto-reconnects silently if the connection drops
+
+The page is fully self-contained (no CDN dependencies) and loads instantly on a slow venue connection. Updates are pushed via Server-Sent Events — the page is live without polling.
+
 #### OSC output
 
 Pass `--osc-host` to broadcast phrase events over UDP/OSC to any receiver — TouchDesigner, Max/MSP, Processing, Ableton Live, etc. Every phrase sends a burst of messages covering arc position, tempo, harmony, scale source, contour, velocity, and pitch list. See `output/osc_output.py` for the full address scheme.
@@ -358,6 +387,7 @@ wolfson/
 ├── output/
 │   ├── midi_output.py            Per-note MIDI playback with articulation
 │   ├── dashboard.py              Rich full-screen terminal display, black background, high-contrast (--dashboard)
+│   ├── web_display.py            Audience web display served over HTTP/SSE (--web)
 │   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)
 ├── data/
 │   ├── encoding.py               Pitch+duration token encoding

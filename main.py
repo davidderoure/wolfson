@@ -38,6 +38,7 @@ from controller.arc_controller  import ArcController
 from output.midi_output     import MidiOutput
 from output.dashboard       import WolfsonDashboard
 from output.osc_output      import OscOutput
+from output.web_display     import WebAudienceDisplay
 from config import (
     DEFAULT_INSTRUMENT, TEMPO_HINT_BPM,
     DASHBOARD_ENABLED, OSC_ENABLED, OSC_HOST, OSC_PORT,
@@ -137,6 +138,15 @@ def main():
         help=f"OSC UDP port (default: {OSC_PORT})",
     )
     parser.add_argument(
+        "--web", action="store_true", default=False,
+        help="Serve an audience display page on the local network (default port 5000). "
+             "Audience connect via http://<your-ip>:5000 on the same WiFi.",
+    )
+    parser.add_argument(
+        "--web-port", type=int, default=5000,
+        help="Port for the audience web display (default: 5000)",
+    )
+    parser.add_argument(
         "--trade", action="store_true", default=TRADE_BEATS_MODE,
         help="Beat-matching mode: sax response matches the bass phrase length "
              "in beats, enabling natural trading of 2s, 4s, or 8s.",
@@ -148,6 +158,7 @@ def main():
     use_dashboard  = args.dashboard
     osc_host       = args.osc_host    # None = OSC disabled
     trade_mode     = args.trade
+    use_web        = args.web
 
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
@@ -170,8 +181,9 @@ def main():
     # Stored as a one-element list so the closure can mutate it.
     _sp_parity = [0]   # 0 → CH_A, 1 → CH_B; flipped after every phrase
 
-    dashboard = WolfsonDashboard() if use_dashboard else None
-    osc_out   = OscOutput(osc_host, args.osc_port) if osc_host else None
+    dashboard  = WolfsonDashboard() if use_dashboard else None
+    osc_out    = OscOutput(osc_host, args.osc_port) if osc_host else None
+    web_out    = WebAudienceDisplay(port=args.web_port) if use_web else None
 
     # ------------------------------------------------------------------
     # Bass phrase handler (reactive path)
@@ -272,6 +284,10 @@ def main():
                                  arc.elapsed(), triggered_by)
             else:
                 _log(params, triggered_by, notes, beats.bpm, out_channel)
+
+            if web_out:
+                web_out.update(params, notes, beats.bpm,
+                               arc.elapsed(), triggered_by)
 
             if osc_out:
                 osc_out.send_phrase(params, notes, beats.bpm,
@@ -378,6 +394,9 @@ def main():
     if dashboard:
         dashboard.start()
 
+    if web_out:
+        web_out.start()
+
     if osc_out:
         print(f"OSC output → {osc_out}")
 
@@ -431,6 +450,8 @@ def main():
         _running.clear()
         if dashboard:
             dashboard.stop()
+        if web_out:
+            web_out.stop()
         if not self_play:
             listener.stop()
         midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])

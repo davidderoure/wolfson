@@ -4,3 +4,4 @@ numpy
 pretty_midi
 rich
 python-osc
+flask
