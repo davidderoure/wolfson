@@ -155,6 +155,39 @@ Best model saved to `models/sax_best.pt`.
 python main.py
 ```
 
+#### Dashboard
+
+Pass `--dashboard` for a full-screen rich terminal display showing the arc progress bar, current stage, harmonic mode, scale tracking, last-phrase notes, and rolling statistics — suitable for a personal monitor while performing.
+
+```bash
+python main.py --dashboard
+python main.py --self-play --dashboard
+```
+
+#### OSC output
+
+Pass `--osc-host` to broadcast phrase events over UDP/OSC to any receiver — TouchDesigner, Max/MSP, Processing, Ableton Live, etc. Every phrase sends a burst of messages covering arc position, tempo, harmony, scale source, contour, velocity, and pitch list. See `output/osc_output.py` for the full address scheme.
+
+```bash
+python main.py --osc-host 127.0.0.1              # localhost (default port 9000)
+python main.py --osc-host 192.168.1.10           # separate machine on LAN
+python main.py --osc-host 127.0.0.1 --osc-port 8000
+```
+
+Key OSC addresses:
+
+| Address | Type | Description |
+|---------|------|-------------|
+| `/wolfson/arc/stage` | s | Current stage name |
+| `/wolfson/arc/progress` | f | 0.0–1.0 through the full arc |
+| `/wolfson/bpm` | f | Live tempo estimate |
+| `/wolfson/harm/mode` | s | `free` / `modal` / `progression` / `pedal` |
+| `/wolfson/scale/source` | s | `bass` / `blend` / `arc` |
+| `/wolfson/scale/source_f` | f | 0.0=arc  0.5=blend  1.0=bass |
+| `/wolfson/phrase/contour_f` | f | −1.0=desc  0.0=neutral  1.0=asc |
+| `/wolfson/phrase/velocity` | i | MIDI velocity (40–110) |
+| `/wolfson/pitches` | i… | One int per note in the phrase |
+
 #### Self-play mode
 
 Pass `--self-play` to run Wolfson autonomously — no MIDI input hardware needed. The sax feeds its own output back as input, creating a continuous generative loop. The 5-minute structural arc still governs the performance.

@@ -36,7 +36,12 @@ from memory.phrase_memory   import PhraseMemory
 from generator.phrase_generator import PhraseGenerator
 from controller.arc_controller  import ArcController
 from output.midi_output     import MidiOutput
-from config import DEFAULT_INSTRUMENT, TEMPO_HINT_BPM
+from output.dashboard       import WolfsonDashboard
+from output.osc_output      import OscOutput
+from config import (
+    DEFAULT_INSTRUMENT, TEMPO_HINT_BPM,
+    DASHBOARD_ENABLED, OSC_ENABLED, OSC_HOST, OSC_PORT,
+)
 
 PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
 
@@ -110,10 +115,24 @@ def main():
         "--bpm", type=float, default=120.0,
         help="Tempo for self-play mode (default: 120)",
     )
+    parser.add_argument(
+        "--dashboard", action="store_true", default=DASHBOARD_ENABLED,
+        help="Enable full-screen rich terminal dashboard",
+    )
+    parser.add_argument(
+        "--osc-host", metavar="HOST", default=None,
+        help="Enable OSC output to HOST (e.g. 127.0.0.1 or 192.168.1.10)",
+    )
+    parser.add_argument(
+        "--osc-port", type=int, default=OSC_PORT,
+        help=f"OSC UDP port (default: {OSC_PORT})",
+    )
     args = parser.parse_args()
 
-    self_play   = args.self_play
-    initial_bpm = args.bpm
+    self_play      = args.self_play
+    initial_bpm    = args.bpm
+    use_dashboard  = args.dashboard
+    osc_host       = args.osc_host    # None = OSC disabled
 
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
@@ -128,6 +147,9 @@ def main():
     _running.set()
     _sax_lock = threading.Lock()   # one sax phrase at a time
     _stats    = _PhraseStats()
+
+    dashboard = WolfsonDashboard() if use_dashboard else None
+    osc_out   = OscOutput(osc_host, args.osc_port) if osc_host else None
 
     # ------------------------------------------------------------------
     # Bass phrase handler (reactive path)
@@ -198,7 +220,18 @@ def main():
                 _t += dur_sec
             memory.store(sax_phrase, source="sax")
 
-            _log(params, triggered_by, notes, beats.bpm)
+            # Update displays and send OSC before playback so receivers
+            # can react in sync with the first note.
+            if dashboard:
+                dashboard.update(params, notes, beats.bpm,
+                                 arc.elapsed(), triggered_by)
+            else:
+                _log(params, triggered_by, notes, beats.bpm)
+
+            if osc_out:
+                osc_out.send_phrase(params, notes, beats.bpm,
+                                    arc.elapsed(), triggered_by)
+
             midi_out.play_phrase(
                 pitches   = [n["pitch"] for n in notes],
                 durations = durations_sec,
@@ -207,8 +240,9 @@ def main():
 
             notes_out = notes   # capture after successful play
 
+            # Stats: always recorded; summary printed only in text mode
             _stats.record(params)
-            if _stats.should_print():
+            if not dashboard and _stats.should_print():
                 _stats.print_summary(arc.elapsed())
 
         finally:
@@ -279,6 +313,12 @@ def main():
     midi_out.start()
     arc.start()
 
+    if dashboard:
+        dashboard.start()
+
+    if osc_out:
+        print(f"OSC output → {osc_out}")
+
     if self_play:
         # Seed the loop with an opening phrase in a background thread
         # so main() is not blocked before the KeyboardInterrupt handler.
@@ -303,13 +343,15 @@ def main():
             on_bass_phrase(phrase)
 
         threading.Thread(target=_bootstrap, daemon=True).start()
-        print(
-            f"Wolfson self-play mode. {initial_bpm:.0f} BPM. "
-            "Ctrl-C to stop.\n"
-        )
+        if not dashboard:
+            print(
+                f"Wolfson self-play mode. {initial_bpm:.0f} BPM. "
+                "Ctrl-C to stop.\n"
+            )
     else:
         listener.start()
-        print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
+        if not dashboard:
+            print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
 
     proactive_thread = threading.Thread(target=_proactive_loop, daemon=True)
     proactive_thread.start()
@@ -318,9 +360,12 @@ def main():
         while True:
             time.sleep(0.1)
     except KeyboardInterrupt:
-        print("\nStopping.")
+        if not dashboard:
+            print("\nStopping.")
     finally:
         _running.clear()
+        if dashboard:
+            dashboard.stop()
         if not self_play:
             listener.stop()
         midi_out.silence()

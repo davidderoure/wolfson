@@ -2,3 +2,5 @@ python-rtmidi
 torch
 numpy
 pretty_midi
+rich
+python-osc

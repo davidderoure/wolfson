@@ -21,6 +21,12 @@ DEFAULT_INSTRUMENT = "sax"    # which trained model to load at startup
 # or in an unusual register. 0 = no hint (estimator uses its running average).
 TEMPO_HINT_BPM = 0
 
+# Dashboard and OSC (both off by default; enable via CLI flags)
+DASHBOARD_ENABLED = False   # --dashboard  : rich full-screen terminal display
+OSC_ENABLED       = False   # --osc-host   : OSC UDP output
+OSC_HOST          = "127.0.0.1"
+OSC_PORT          = 9000
+
 # Structural arc (all times in seconds from performance start)
 ARC = {
     "sparse":          (0,    60),
