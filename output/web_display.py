@@ -14,21 +14,37 @@ and receive updates in real time; JS rewrites the DOM without a page reload.
 Usage::
 
     display = WebAudienceDisplay(port=5000)
-    display.start()          # prints "Audience display: http://192.168.x.x:5000"
+    display.start()                   # local URL only
+    display.start(tunnel=True)        # also opens a cloudflared public tunnel
     display.update(params, notes, bpm, elapsed, triggered_by)
-    display.stop()           # graceful shutdown (stops accepting new connections)
+    display.stop()                    # graceful shutdown + tunnel termination
 
-Network
--------
+Network — local
+---------------
 Binds to 0.0.0.0 so any device on the same LAN can connect.
 The startup print shows the machine's LAN IP so the performer can share the URL.
-All assets are embedded — no CDN requests, works offline.
+
+Network — public tunnel (--tunnel)
+-----------------------------------
+Shells out to ``cloudflared tunnel --url http://localhost:<port>``.
+cloudflared makes an outbound HTTPS connection to Cloudflare's edge, which
+issues a public URL (e.g. https://curious-fox-amazing.trycloudflare.com).
+This works on eduroam and most institutional networks because it requires no
+inbound ports — only outbound HTTPS.
+
+Requires cloudflared to be installed:
+    brew install cloudflare/cloudflare/cloudflared
+
+No account or authentication needed for quick tunnels.
+All assets are embedded — no CDN requests, works offline once the page is loaded.
 """
 
 import json
 import logging
 import queue
+import re
 import socket
+import subprocess
 import threading
 
 from flask import Flask, Response
@@ -336,12 +352,13 @@ class WebAudienceDisplay:
     """
 
     def __init__(self, port: int = 5000):
-        self._port        = port
-        self._state       = {}
-        self._state_lock  = threading.Lock()
-        self._subs        = []    # list[queue.Queue]
-        self._subs_lock   = threading.Lock()
+        self._port         = port
+        self._state        = {}
+        self._state_lock   = threading.Lock()
+        self._subs         = []    # list[queue.Queue]
+        self._subs_lock    = threading.Lock()
         self._phrase_count = 0
+        self._tunnel_proc  = None  # cloudflared subprocess, if started
 
         # Suppress Flask/Werkzeug startup noise
         log = logging.getLogger("werkzeug")
@@ -402,17 +419,69 @@ class WebAudienceDisplay:
     # Lifecycle
     # -----------------------------------------------------------------------
 
-    def start(self):
-        """Start the Flask server in a background daemon thread."""
+    def start(self, tunnel: bool = False):
+        """Start the Flask server in a background daemon thread.
+
+        Parameters
+        ----------
+        tunnel : bool
+            If True, also open a cloudflared quick tunnel and print the
+            public URL.  Requires ``cloudflared`` to be installed:
+            ``brew install cloudflare/cloudflare/cloudflared``
+        """
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
         ip  = _local_ip()
         url = f"http://{ip}:{self._port}"
-        print(f"Audience display:  {url}")
-        print(f"  Share this URL with the audience (same WiFi network).")
+        print(f"Audience display (local):   {url}")
+        print(f"  Share with audience on the same WiFi network.")
+        if tunnel:
+            self._start_tunnel(self._port)
+
+    def _start_tunnel(self, port: int):
+        """Launch cloudflared and print the public trycloudflare.com URL."""
+        try:
+            proc = subprocess.Popen(
+                ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
+                stdout = subprocess.DEVNULL,
+                stderr = subprocess.PIPE,
+            )
+            self._tunnel_proc = proc
+        except FileNotFoundError:
+            print("  cloudflared not found — install with:")
+            print("    brew install cloudflare/cloudflare/cloudflared")
+            return
+
+        url_found = threading.Event()
+        pattern   = re.compile(r'https://[a-zA-Z0-9\-]+\.trycloudflare\.com')
+
+        def _read_stderr():
+            for raw in proc.stderr:
+                line = raw.decode("utf-8", errors="replace")
+                m = pattern.search(line)
+                if m:
+                    print(f"Audience display (public):  {m.group()}")
+                    print(f"  Share this URL with the audience anywhere.")
+                    url_found.set()
+                    break
+            # Drain remaining stderr so the pipe buffer never fills
+            for _ in proc.stderr:
+                pass
+
+        threading.Thread(target=_read_stderr, daemon=True).start()
+
+        if not url_found.wait(timeout=20):
+            print("  cloudflared tunnel URL not found within 20 s "
+                  "(is cloudflared installed and reachable?)")
 
     def stop(self):
-        """Signal all connected clients to disconnect."""
+        """Signal all connected clients to disconnect and terminate the tunnel."""
+        if self._tunnel_proc is not None:
+            try:
+                self._tunnel_proc.terminate()
+            except Exception:
+                pass
+            self._tunnel_proc = None
         with self._subs_lock:
             for q in self._subs:
                 try:

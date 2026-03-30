@@ -147,6 +147,11 @@ def main():
         help="Port for the audience web display (default: 5000)",
     )
     parser.add_argument(
+        "--tunnel", action="store_true", default=False,
+        help="Open a cloudflared public tunnel so audience can connect from any network "
+             "(e.g. eduroam).  Requires: brew install cloudflare/cloudflare/cloudflared",
+    )
+    parser.add_argument(
         "--trade", action="store_true", default=TRADE_BEATS_MODE,
         help="Beat-matching mode: sax response matches the bass phrase length "
              "in beats, enabling natural trading of 2s, 4s, or 8s.",
@@ -395,7 +400,7 @@ def main():
         dashboard.start()
 
     if web_out:
-        web_out.start()
+        web_out.start(tunnel=args.tunnel)
 
     if osc_out:
         print(f"OSC output → {osc_out}")

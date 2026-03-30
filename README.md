@@ -232,15 +232,15 @@ Pass `--web` to serve a mobile-optimised display page on the local network. Any 
 
 ```bash
 python main.py --web                      # serves on port 5000
-python main.py --web --web-port 8080      # custom port
+python main.py --web --web-port 8080      # custom port (macOS: port 5000 may be taken by AirPlay)
 python main.py --self-play --web --dashboard
 ```
 
 At startup the terminal prints the URL to share:
 
 ```
-Audience display:  http://192.168.1.42:5000
-  Share this URL with the audience (same WiFi network).
+Audience display (local):   http://192.168.1.42:5000
+  Share with audience on the same WiFi network.
 ```
 
 The page shows:
@@ -254,6 +254,31 @@ The page shows:
 - Auto-reconnects silently if the connection drops
 
 The page is fully self-contained (no CDN dependencies) and loads instantly on a slow venue connection. Updates are pushed via Server-Sent Events — the page is live without polling.
+
+##### Public tunnel (eduroam / institutional networks)
+
+On eduroam or other networks where you cannot set up a local AP, use `--tunnel` to open a [cloudflared quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/). This makes an outbound HTTPS connection to Cloudflare's edge — no inbound ports required, no account needed.
+
+**Install cloudflared first:**
+```bash
+brew install cloudflare/cloudflare/cloudflared
+```
+
+**Run with tunnel:**
+```bash
+python main.py --web --tunnel
+python main.py --web --web-port 8080 --tunnel
+```
+
+At startup both URLs are printed:
+```
+Audience display (local):   http://192.168.1.42:8080
+  Share with audience on the same WiFi network.
+Audience display (public):  https://curious-fox-amazing.trycloudflare.com
+  Share this URL with the audience anywhere.
+```
+
+The public URL changes each run (Cloudflare assigns a random subdomain). Share it via a short URL, QR code, or just read it out. All traffic is end-to-end HTTPS via Cloudflare — the Flask server itself stays on localhost.
 
 #### OSC output
 
