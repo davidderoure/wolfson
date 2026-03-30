@@ -10,13 +10,23 @@ Wolfson uses an LSTM trained on jazz solo transcriptions from the [Weimar Jazz D
 
 ```
 Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► PhraseAnalyzer
+                               │                               (contour, density,
+                          BeatEstimator                         Q&A type, swing,
+                         (live tempo)                           dynamics, energy
+                               │                                profile, pitch
+                               │                                classes, interval
+                               │                                motifs)
                                │                                     │
-                          BeatEstimator                        PhraseMemory
-                         (live tempo)                       (stores both voices)
+                               │                               PhraseMemory
+                               │                            (phrases + motifs,
+                               │                             both voices)
                                │                                     │
                                └──────────── ArcController ──────────┘
-                                          (arc, leadership,
-                                           proactive mode)
+                                          (5-min arc, leadership,
+                                           proactive mode,
+                                           bass pitch-class tracking,
+                                           energy arc selection,
+                                           motif selection)
                                                  │
                                         HarmonyController
                                     (mode, progression, pedal,
@@ -24,11 +34,21 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                                  │
                                           PhraseGenerator
                                     (LSTM + chord conditioning
+                                     + pitch range limits
                                      + scale pitch bias
                                      + contour steering
-                                     + swing/triplet bias)
+                                     + swing/triplet bias
+                                     + energy arc shaping
+                                     + motivic development
+                                     + voice leading)
                                                  │
-                                           MidiOutput ──► Synth (sax voice)
+                               ┌─────────────────┴──────────────────┐
+                          MidiOutput                            OscOutput
+                     (per-note velocity                   (phrase events to
+                      from energy arc)                  TouchDesigner / Max
+                          │                              / Processing etc.)
+                          ▼
+                    Synth (sax voice)
 ```
 
 ### Musicality features
