@@ -382,9 +382,35 @@ class WebAudienceDisplay:
 
         @app.route("/headers")
         def show_headers():
-            from flask import request
-            lines = "\n".join(f"{k}: {v}" for k, v in sorted(request.headers))
-            return lines, 200, {"Content-Type": "text/plain; charset=utf-8"}
+            from flask import request, make_response
+            lines = "=== REQUEST HEADERS ===\n"
+            lines += "\n".join(f"{k}: {v}" for k, v in sorted(request.headers))
+            r = make_response(lines, 200)
+            r.headers["Content-Type"] = "text/plain; charset=utf-8"
+            return r
+
+        @app.route("/test")
+        def style_test():
+            # Minimal page: NO <style> block, only inline style= attributes.
+            # If this renders correctly over the tunnel, the Worker is
+            # stripping/overriding our <style> block.
+            # If this is also broken, the Worker modifies style= attributes too.
+            html = (
+                "<!DOCTYPE html>"
+                "<html><head><meta charset='utf-8'>"
+                "<meta name='color-scheme' content='dark'>"
+                "</head>"
+                "<body style='background:#0a0a0a;color:#ffffff;"
+                "font-family:monospace;padding:20px'>"
+                "<p style='color:#00ffff;font-size:2em'>CYAN — inline style</p>"
+                "<p style='color:#ff4444;font-size:1.5em'>RED — inline style</p>"
+                "<p style='color:#ffffff'>WHITE — inline style</p>"
+                "<p>DEFAULT — no inline style (should be white if body color inherited)</p>"
+                "<p style='background:#ffffff;color:#000000;padding:4px'>"
+                "BLACK ON WHITE — explicit</p>"
+                "</body></html>"
+            )
+            return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
         @app.route("/stream")
         def stream():
