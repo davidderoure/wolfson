@@ -66,6 +66,12 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Bass pitch-class tracking** — the system extracts the pitch-class set of each bass phrase (which of the 12 chromatic pitch classes appeared) and uses it to steer the sax toward the tonality the bassist is actually implying. With ≥ 4 distinct pitch classes (a scale fragment or lick), the bass pitch classes override the arc's harmonic plan entirely. With 2–3 (a motif or interval), they are unioned with the arc scale to broaden the available palette. With fewer, the arc's harmonic plan is used unchanged. This means that switching from D Dorian to Gb pentatonic produces an immediate shift in the sax response. The scale source (`bass` / `blend` / `arc`) is shown in the console and dashboard on every phrase.
 
+**Energy arc** — every generated phrase has an internal energy shape applied by position-dependent logit biases. The bass phrase's own energy profile (classified as `arch`, `ramp_up`, `ramp_down`, `spike`, or `flat` from its per-note pitch and velocity trajectory) is complemented: a bass `ramp_up` gets a sax `arch` (peaks then resolves); a `ramp_down` bass gets a `ramp_up` sax. Stage overrides apply at structural boundaries: peak stage always forces `arch`; resolution always forces `ramp_down`. The arc shapes three things simultaneously — pitch register (higher = more energetic), note density (shorter durations at the peak), and per-note velocity (0.75×–1.25× the base phrase velocity). The current arc shape is shown in the console and dashboard on every phrase.
+
+**Motivic development** — the system tracks all 2-, 3-, and 4-note interval patterns (n-grams) across recent phrases in transposition-invariant form (signed semitones between adjacent pitches, not absolute pitch). When a pattern has appeared at least twice in the last 16 phrases, it is passed to the generator as a `motif_target`. A logit bias fires whenever the generated line has entered a prefix of the pattern — nudging the LSTM to complete the interval sequence. Strength scales with stage: zero in the sparse stage (insufficient material), rising through building and peak, strongest in recapitulation (0.8) where thematic return is most meaningful. This creates audible motivic echoes and development across the full arc without forcing the model.
+
+**Voice leading** — two complementary biases operate on pitch tokens at every step. Chord-tone targeting adds a positive bias to root, 3rd, and 7th pitch classes, growing linearly with `arc_position` from 0 at the phrase start to full strength at the end — so the model is free in the phrase body but is nudged toward harmonic resolution at the cadence. Stepwise motion preference adds a small constant bias toward pitches ±1–2 semitones from the last generated pitch throughout the phrase, encouraging smooth contrary motion and reducing large leaps. Both biases are calibrated within a shared logit budget so they complement rather than override the LSTM's learned jazz vocabulary.
+
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
 
 ### Performance arc
@@ -241,7 +247,7 @@ python tests/run_tests.py
 ```
 
 Outputs:
-- `tests/logs/01_basic_response.txt` … `tests/logs/10_sparse.txt` — per-test log showing bass phrase, analysis features, generation parameters, and sax response
+- `tests/logs/01_basic_response.txt` … `tests/logs/21_voice_leading_G7.txt` — per-test log showing bass phrase, analysis features, generation parameters, and sax response (including per-note velocity scale and detected energy profile)
 - `tests/demo.mid` — two-track MIDI (bass + sax) with all test segments in sequence, ready to import into a DAW
 
 | Test | Feature exercised |
@@ -260,6 +266,13 @@ Outputs:
 | 12 | Tempo — 90 BPM |
 | 13 | Tempo — 160 BPM |
 | 14 | Tempo — 200 BPM (fast) |
+| 15 | Energy arc — ramp_up bass → arch sax (auto-detected + complemented) |
+| 16 | Energy arc — arch (forced); per-note velocity peaks at midpoint |
+| 17 | Energy arc — ramp_down (forced); velocity and register descend |
+| 18 | Motivic development — ascending minor third motif (3, 2) at strength 0.8 |
+| 19 | Motivic development — blues cell motif (3, -2, -1) at strength 0.8 |
+| 20 | Voice leading — Dm7 endpoint targeting (chord tones D, F, C) |
+| 21 | Voice leading — G7 endpoint targeting (chord tones G, B, F) |
 
 ## Project structure
 
@@ -275,13 +288,13 @@ wolfson/
 ├── input/
 │   ├── midi_listener.py          MIDI input, note events
 │   ├── phrase_detector.py        Segments note stream into phrases
-│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing ratio, dynamics
+│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing, dynamics, energy profile, interval motifs
 │   └── beat_estimator.py         Live tempo estimation from bass onsets
 ├── memory/
 │   └── phrase_memory.py          Stores phrases for recall and development
 ├── generator/
 │   ├── lstm_model.py             LSTM with chord conditioning
-│   ├── phrase_generator.py       Seeds LSTM; contour, scale, and swing steering
+│   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading steering
 │   └── train.py                  Training script
 ├── controller/
 │   ├── arc_controller.py         Arc, leadership, proactive mode
