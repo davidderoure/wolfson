@@ -64,6 +64,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Articulation** — each generated note sounds for 85% of its time slot, with a short silence before the next note. A minimum duration floor (0.2 beats, ≈100 ms at 120 BPM) prevents imperceptibly short notes from appearing in dense generated passages.
 
+**Bass pitch-class tracking** — the system extracts the pitch-class set of each bass phrase (which of the 12 chromatic pitch classes appeared) and uses it to steer the sax toward the tonality the bassist is actually implying. With ≥ 4 distinct pitch classes (a scale fragment or lick), the bass pitch classes override the arc's harmonic plan entirely. With 2–3 (a motif or interval), they are unioned with the arc scale to broaden the available palette. With fewer, the arc's harmonic plan is used unchanged. This means that switching from D Dorian to Gb pentatonic produces an immediate shift in the sax response. The scale source (`bass` / `blend` / `arc`) is shown in the console and dashboard on every phrase.
+
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
 
 ### Performance arc
@@ -90,7 +92,7 @@ The system supports multiple instrument families (trumpet, trombone, flute) with
 pip install -r requirements.txt
 ```
 
-Dependencies: `python-rtmidi`, `torch`, `numpy`, `pretty_midi`
+Dependencies: `python-rtmidi`, `torch`, `numpy`, `pretty_midi`, `rich`, `python-osc`
 
 ### Hardware
 
@@ -202,7 +204,7 @@ The system seeds itself with a short D minor pentatonic motif, then responds to 
 - Testing the arc structure and harmonic progression in real time
 - Leaving it running as a generative ambient piece
 
-The console output is identical to normal mode (stage, tempo, contour, harmony, etc.).
+Console output is identical to normal mode: each phrase logs stage, tempo, leadership, harmonic mode, scale source, contour, velocity, and note count. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
 
 ## Testing individual features
 
@@ -254,6 +256,10 @@ Outputs:
 | 08 | D Dorian scale pitch bias |
 | 09 | ii-V-I: same phrase over Dm7, G7, Cmaj |
 | 10 | Sparse phrase → sax generates longer response |
+| 11 | Tempo — 60 BPM (slow) |
+| 12 | Tempo — 90 BPM |
+| 13 | Tempo — 160 BPM |
+| 14 | Tempo — 200 BPM (fast) |
 
 ## Project structure
 
@@ -262,6 +268,7 @@ wolfson/
 ├── main.py                       Entry point (full 5-minute performance)
 ├── demo.py                       Feature-focused testing without the arc
 ├── test-midi-in.py               Verify MIDI input port and event routing
+├── osc-monitor.py                Print incoming OSC messages (test OSC output)
 ├── config.py                     All tunable parameters
 ├── wolfson_train.ipynb           Google Colab training notebook
 ├── requirements.txt
@@ -280,7 +287,9 @@ wolfson/
 │   ├── arc_controller.py         Arc, leadership, proactive mode
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
-│   └── midi_output.py            Per-note MIDI playback with articulation
+│   ├── midi_output.py            Per-note MIDI playback with articulation
+│   ├── dashboard.py              Rich full-screen terminal display (--dashboard)
+│   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)
 ├── data/
 │   ├── encoding.py               Pitch+duration token encoding
 │   ├── chords.py                 Chord parsing and 49-token vocabulary
