@@ -50,7 +50,13 @@ _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F",
                "F#", "G", "G#", "A", "A#", "B"]
 
 _CONTOUR_ARROW = {"ascending": "↑", "descending": "↓", "neutral": "→"}
-_SCALE_STYLE   = {"bass": "bold green", "blend": "yellow", "arc": "dim white"}
+_SCALE_STYLE   = {"bass": "bold green", "blend": "yellow", "arc": "white"}
+
+# Shared styles
+_DIM   = "bright_black"   # secondary labels — visible but not competing
+_BODY  = "white"          # normal body text
+_HEAD  = "bold white"     # emphasis / headers
+_PANEL = "white"          # panel borders
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +67,7 @@ class WolfsonDashboard:
     """Full-screen rich terminal dashboard, updated on each phrase."""
 
     def __init__(self, stats_window: int = STATS_WINDOW):
-        self._console      = Console()
+        self._console      = Console(style="on black")
         self._live         = Live(
             console            = self._console,
             screen             = True,
@@ -139,13 +145,13 @@ class WolfsonDashboard:
     def _header(self) -> Text:
         mins = int(self._elapsed // 60)
         secs = int(self._elapsed % 60)
-        t = Text()
-        t.append("  WOLFSON", style="bold white")
+        t = Text(style="on black")
+        t.append("  WOLFSON", style="bold cyan on black")
         t.append(
             f"   t={mins}:{secs:02d}"
             f"  phrase #{self._phrase_count}"
             f"  {self._bpm:.1f} bpm",
-            style="dim white",
+            style=f"{_BODY} on black",
         )
         return t
 
@@ -161,16 +167,16 @@ class WolfsonDashboard:
             seg = max(1, round(width * (end - start) / ARC_TOTAL))
 
             if self._elapsed <= start:
-                bar.append("░" * seg, style=f"dim {color}")
+                bar.append("░" * seg, style=f"bright_black")
             elif self._elapsed >= end:
-                bar.append("█" * seg, style=color)
+                bar.append("█" * seg, style=f"bold {color}")
             else:
                 filled = max(0, round(seg * (self._elapsed - start) / (end - start)))
                 bar.append("█" * filled,        style=f"bold {color}")
-                bar.append("░" * (seg - filled), style=f"dim {color}")
+                bar.append("░" * (seg - filled), style=f"bright_black")
 
             label       = name[:seg].center(seg)
-            label_style = color if self._elapsed >= start else f"dim {color}"
+            label_style = f"bold {color}" if self._elapsed >= start else "bright_black"
             labels.append(label, style=label_style)
 
         # Stack bar and labels in a borderless grid
@@ -179,7 +185,7 @@ class WolfsonDashboard:
         grid.add_row(bar)
         grid.add_row(labels)
 
-        return Panel(grid, border_style="dim white")
+        return Panel(grid, border_style=_PANEL, style="on black")
 
     # -- Info panel ----------------------------------------------------------
 
@@ -209,15 +215,15 @@ class WolfsonDashboard:
 
         grid.add_row(
             Text(stage.upper(),              style=f"bold {s_col}"),
-            Text(harm,                       style="cyan"),
+            Text(harm,                       style="bold cyan"),
             Text(f"scale  {src.upper()}",    style=src_col),
-            Text(f"{arrow}  {contour}",      style="white"),
+            Text(f"{arrow}  {contour}",      style=_BODY),
         )
         grid.add_row(
-            Text(f"lead   {lead}",           style="dim white"),
-            Text(f"mode   {mode}",           style="dim white"),
-            Text(f"vel {vel}   n {n}",       style="dim white"),
-            Text(note_str,                   style="dim cyan"),
+            Text(f"lead   {lead}",           style=_DIM),
+            Text(f"mode   {mode}",           style=_DIM),
+            Text(f"vel {vel}   n {n}",       style=_BODY),
+            Text(note_str,                   style="cyan"),
         )
 
         trigger_label = (
@@ -228,7 +234,8 @@ class WolfsonDashboard:
         return Panel(
             grid,
             title=f"last phrase   {trigger_label}",
-            border_style="dim white",
+            border_style=_PANEL,
+            style="on black",
         )
 
     # -- Stats panel ---------------------------------------------------------
@@ -238,17 +245,17 @@ class WolfsonDashboard:
 
         def fmt(d: deque) -> Text:
             if not d:
-                return Text("—", style="dim white")
+                return Text("—", style=_DIM)
             t = Text()
             for i, (k, v) in enumerate(Counter(d).most_common()):
                 if i:
-                    t.append("   ")
-                t.append(k,       style="cyan")
-                t.append(f" {v}", style="white")
+                    t.append("  ", style=_DIM)
+                t.append(k,       style="bold cyan")
+                t.append(f" {v}", style=_BODY)
             return t
 
         grid = Table.grid(padding=(0, 2))
-        grid.add_column(style="dim white", min_width=9)
+        grid.add_column(style=_DIM, min_width=9)
         grid.add_column()
 
         grid.add_row("harm",    fmt(self._harm))
@@ -256,4 +263,4 @@ class WolfsonDashboard:
         grid.add_row("arc",     fmt(self._arc))
         grid.add_row("contour", fmt(self._contour))
 
-        return Panel(grid, title=f"last {n} phrases", border_style="dim white")
+        return Panel(grid, title=f"last {n} phrases", border_style=_PANEL, style="on black")

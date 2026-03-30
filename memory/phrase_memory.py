@@ -16,12 +16,13 @@ class PhraseMemory:
         self._phrases = []   # list of {phrase, source, index, motifs}
         self._counter = 0
 
-    def store(self, phrase, source="bass", motifs=None):
+    def store(self, phrase, source="bass", motifs=None, lyrical_motifs=None):
         entry = {
-            "phrase": phrase,
-            "source": source,
-            "index":  self._counter,
-            "motifs": motifs or [],
+            "phrase":          phrase,
+            "source":          source,
+            "index":           self._counter,
+            "motifs":          motifs or [],
+            "lyrical_motifs":  lyrical_motifs or [],
         }
         self._counter += 1
         self._phrases.append(entry)
@@ -37,6 +38,19 @@ class PhraseMemory:
         counter = Counter()
         for entry in pool:
             for motif in entry.get("motifs", []):
+                counter[motif] += 1
+        return counter
+
+    def recall_lyrical_motifs(self, source=None, n_recent: int = 16) -> Counter:
+        """
+        Return a Counter of *lyrical* (long-note) interval motifs seen in the
+        last n_recent phrases.  These are the sustained, singable shapes that
+        are worth quoting back during quieter arc stages (recap, resolution).
+        """
+        pool = self._filter(source)[-n_recent:]
+        counter = Counter()
+        for entry in pool:
+            for motif in entry.get("lyrical_motifs", []):
                 counter[motif] += 1
         return counter
 

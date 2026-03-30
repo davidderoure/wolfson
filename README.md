@@ -15,10 +15,12 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                          (live tempo)                           dynamics, energy
                                │                                profile, pitch
                                │                                classes, interval
+                               │                                motifs, lyrical
                                │                                motifs)
                                │                                     │
                                │                               PhraseMemory
-                               │                            (phrases + motifs,
+                               │                            (phrases + motifs
+                               │                             + lyrical motifs,
                                │                             both voices)
                                │                                     │
                                └──────────── ArcController ──────────┘
@@ -26,7 +28,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                            proactive mode,
                                            bass pitch-class tracking,
                                            energy arc selection,
-                                           motif selection)
+                                           motif + lyrical motif selection,
+                                           stage swing baseline)
                                                  │
                                         HarmonyController
                                     (mode, progression, pedal,
@@ -35,12 +38,18 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                           PhraseGenerator
                                     (LSTM + chord conditioning
                                      + pitch range limits
+                                     + register gravity
                                      + scale pitch bias
                                      + contour steering
                                      + swing/triplet bias
                                      + energy arc shaping
+                                     + long-note penalty
+                                     + singable duration bias
                                      + motivic development
-                                     + voice leading)
+                                     + voice leading
+                                     + modal leap bonus (P4/P5)
+                                     + rest injection
+                                     + beat accumulator)
                                                  │
                                ┌─────────────────┴──────────────────┐
                           MidiOutput                            OscOutput
@@ -76,7 +85,7 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Pitch range** — a soft logit penalty steers generated pitches into a practical sax register (E3–E6). Notes outside this range are penalised proportionally to their distance from the limit, preventing the generator from following the bass into an unplayable register while still allowing occasional extremes.
 
-**Swing / triplet feel** — the system detects whether the bass is playing straight or swung (from consecutive IOI ratios). A straight bass call gets a triplet-grid duration bias in the response, pushing the sax toward the 12/8 feel and creating rhythmic contrast. A swinging bass gets no bias — the LSTM's learned distribution handles it.
+**Swing / triplet feel** — the system detects whether the bass is playing straight or swung (from consecutive IOI ratios) and produces a reactive swing bias (1.0 for straight, 0.0 for swung, 0.3 for mixed). This reactive value is then clamped to a per-stage (min, max) band rather than used directly. The band enforces the arc's swing character regardless of what the detector reads: sparse stays exploratory and barely swung (ceiling 0.25) even if the detected feel is "straight"; resolution stays a gentle ballad lilt (0.10–0.30); building warms up through a groove range (0.30–0.65); peak is always hard bebop swing (0.70). This also breaks the self-play oscillation where lyrical long notes look "straight" to the detector and previously pushed the swing to 1.0 at every stage.
 
 **Live tempo tracking** — a `BeatEstimator` infers BPM from inter-onset intervals in the bass line. Generated sax phrases play back in time with the bassist's actual tempo. No click track or advance setup required.
 
@@ -90,19 +99,41 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Motivic development** — the system tracks all 2-, 3-, and 4-note interval patterns (n-grams) across recent phrases in transposition-invariant form (signed semitones between adjacent pitches, not absolute pitch). When a pattern has appeared at least twice in the last 16 phrases, it is passed to the generator as a `motif_target`. A logit bias fires whenever the generated line has entered a prefix of the pattern — nudging the LSTM to complete the interval sequence. Strength scales with stage: zero in the sparse stage (insufficient material), rising through building and peak, strongest in recapitulation (0.8) where thematic return is most meaningful. This creates audible motivic echoes and development across the full arc without forcing the model.
 
-**Voice leading** — two complementary biases operate on pitch tokens at every step. Chord-tone targeting adds a positive bias to root, 3rd, and 7th pitch classes, growing linearly with `arc_position` from 0 at the phrase start to full strength at the end — so the model is free in the phrase body but is nudged toward harmonic resolution at the cadence. Stepwise motion preference adds a small constant bias toward pitches ±1–2 semitones from the last generated pitch throughout the phrase, encouraging smooth contrary motion and reducing large leaps. Both biases are calibrated within a shared logit budget so they complement rather than override the LSTM's learned jazz vocabulary.
+**Lyrical motif re-use** — a second, narrower motif bank stores interval patterns extracted *only* from sustained (singable) notes: sax notes whose `duration_beats` is at or above 0.4 beats. During quieter arc stages (recapitulation at strength 0.7, resolution at 0.5) these lyrical motifs are given priority over the general pool, so the sax preferentially quotes back the melodic shapes from its own long-note passages. The effect is a sense of returning home to the singable themes built earlier in the arc, rather than recycling ornamental fast-note fragments.
+
+**Voice leading** — three complementary biases operate on pitch tokens at every step. Chord-tone targeting adds a positive bias to root, 3rd, and 7th pitch classes, growing linearly with `arc_position` from 0 at the phrase start to full strength at the end — so the model is free in the phrase body but is nudged toward harmonic resolution at the cadence. Stepwise motion preference adds a small constant bias toward pitches ±1–2 semitones from the last generated pitch. Leap incentive adds a small positive bonus for 3rd–5th intervals (3–7 semitones), increasing melodic shape and reducing chromatic saturation. All three are calibrated within a shared logit budget so they complement rather than override the LSTM's learned jazz vocabulary.
+
+**Modal leap bonus** — in modal stages (building and peak), an additional logit boost is applied to P4 (perfect 4th, 5 semitones) and P5 (perfect 5th, 7 semitones) intervals, scaled by a `modal_strength` value set per stage (0.0 at sparse/resolution, 0.6 at building, 1.0 at peak, 0.4 at recapitulation). This reflects the quartal and pentatonic character of modal jazz — the stacked-4ths vocabulary of McCoy Tyner, Herbie Hancock, and Wayne Shorter — which is under-represented in the base LSTM's learned distribution but clearly differentiates modal from tonal playing. Statistical analysis of output MIDI confirmed P4 motion rises from ~7% of intervals at modal_strength=0 to ~21% at modal_strength=1.0, matching the expected interval profile for modal jazz.
+
+**Phrase breathing** — after the LSTM sampling loop, silence sentinels (REST_PITCH = −1) are spliced into the generated phrase with a bell-curve probability distribution: zero at the very start and end of the phrase, peaking at the midpoint (max 15% chance per inter-note gap). Rest duration is drawn from {0.5, 1.0} beats. The MidiOutput layer translates sentinels to `time.sleep()` calls with no MIDI note sent. This models the breathing and phrasing pauses a human saxophonist would naturally insert — continuous eighth-note streams without gaps are musically inauthentic regardless of harmonic accuracy.
+
+**Singable duration bias** — the LSTM's training data is dominated by 8th and 16th notes, giving it a strong prior toward fast, busy output. To counter this, a bell-curve logit boost is applied to the duration token vocabulary, centred on the quarter-note token (≈ 0.95 beats) with a width of ±4.5 tokens, pulling sampling toward the 0.5–1.7 beat range where sustained, melodic, "singable" lines live. The boost is scaled by `(1 − rhythmic_density)`, so it is strongest in lyrical stages (full strength at resolution, density=0.1) and progressively suppressed toward the busiest stage (density=0.9 at peak). The result is that mid-register quarter-note lines dominate at sparse and resolution stages while the peak can still drive faster runs.
+
+**Rhythmic density** — the arc controller emits a `rhythmic_density` value (0.0 = lyrical, 1.0 = bebop) for each stage, which the generator uses to scale the singable-duration bias inversely. This creates a natural busyness gradient across the arc: sparse and resolution feel spacious and melodic; peak is the most rhythmically active. The value is logged in the console output alongside `modal_strength`.
+
+| Stage | Rhythmic density | Character |
+|-------|-----------------|-----------|
+| sparse | 0.2 | Open, sustained — establish motifs slowly |
+| building | 0.5 | Mixed — lines begin to flow |
+| peak | 0.9 | Fast and active — maximum rhythmic intensity |
+| recapitulation | 0.3 | Lyrical return — recall themes with space |
+| resolution | 0.1 | Slowest — long tones, fading out |
+
+**Phrase length control** — four cooperating mechanisms manage phrase length. A duration-token penalty tensor applies a graduated negative logit bias to tokens above ~2 beats. A bell-curve singable-duration boost raises the floor toward quarter notes (see above). A beat accumulator hard-stops generation once the total accumulated beats reaches `MAX_PHRASE_BEATS = 16`. The arc controller caps `n_notes` at 14, uses stage-scaled multipliers (1.1× / 0.75× for leading/following), and enforces a per-stage minimum phrase length floor (4–8 notes) so even the shortest "following" phrase has enough notes to be musically complete.
+
+**Repetition control** — a growing logit penalty is applied to the most recently played pitch token, starting at −2.5 logits on the first immediate repeat and adding −2.0 for each further consecutive repeat. After three same-pitch notes in a row the penalty reaches −6.5 logits, effectively eliminating a fourth repeat while still permitting occasional passing-tone ornaments. The stepwise bias strength was simultaneously reduced (0.4 → 0.1) to remove a partial cancellation that was blunting the penalty's effect.
 
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
 
 ### Performance arc
 
-| Time | Stage | Harmonic mode | Character |
-|------|-------|---------------|-----------|
-| 0:00–1:00 | sparse | free | Short exchanges; bass leads; establish motifs |
-| 1:00–2:30 | building | modal | Longer phrases; settle into a mode; sax begins recalling |
-| 2:30–3:30 | peak | progression | Maximum density; active chord motion; tritone subs |
-| 3:30–4:30 | recapitulation | modal | Return to early phrases; modal feel restored |
-| 4:30–5:00 | resolution | pedal | Sax thins and resolves over a pedal tone; plays the last phrase |
+| Time | Stage | Harmonic mode | Modal strength | Rhythmic density | Swing range | Character |
+|------|-------|---------------|----------------|-----------------|-------------|-----------|
+| 0:00–1:00 | sparse | free | 0.0 | 0.2 | 0.00–0.25 | Exploratory, barely swung; establish motifs slowly |
+| 1:00–2:30 | building | modal | 0.6 | 0.5 | 0.30–0.65 | Groove warming up; P4/P5 leaps rise |
+| 2:30–3:30 | peak | progression | 1.0 | 0.9 | 0.70 | Hard bebop swing; maximum activity; tritone subs |
+| 3:30–4:30 | recapitulation | modal | 0.4 | 0.3 | 0.30–0.60 | Medium swing; lyrical return; singable motifs recalled |
+| 4:30–5:00 | resolution | pedal | 0.0 | 0.1 | 0.10–0.30 | Gentle ballad lilt; slow, sustained; sax plays the final phrase |
 
 ## Training data
 
@@ -185,7 +216,7 @@ python main.py
 
 #### Dashboard
 
-Pass `--dashboard` for a full-screen rich terminal display showing the arc progress bar, current stage, harmonic mode, scale tracking, last-phrase notes, and rolling statistics — suitable for a personal monitor while performing.
+Pass `--dashboard` for a full-screen rich terminal display showing the arc progress bar, current stage, harmonic mode, scale tracking, last-phrase notes, and rolling statistics — suitable for a personal monitor while performing. The dashboard uses a forced black background with high-contrast white and cyan text so it remains legible in all lighting conditions.
 
 ```bash
 python main.py --dashboard
@@ -230,7 +261,9 @@ The system seeds itself with a short D minor pentatonic motif, then responds to 
 - Testing the arc structure and harmonic progression in real time
 - Leaving it running as a generative ambient piece
 
-Console output is identical to normal mode: each phrase logs stage, tempo, leadership, harmonic mode, scale source, contour, velocity, and note count. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
+**Two-channel dialogue** — in self-play mode, phrases alternate between MIDI channel 1 and MIDI channel 2 (configurable as `SELF_PLAY_CH_A` / `SELF_PLAY_CH_B` in `config.py`). Route channel 1 to one synth voice (e.g. alto sax) and channel 2 to another (e.g. tenor sax, or a contrasting timbre) to make the call-and-response structure directly audible. Odd-numbered phrases play on channel 1; even-numbered phrases play on channel 2. In live-bass mode the sax always plays on channel 1.
+
+Console output is identical to normal mode: each phrase logs stage, tempo, MIDI channel, leadership, harmonic mode, scale source, contour, velocity, modal strength, rhythmic density, and note count. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
 
 ## Testing individual features
 
@@ -302,26 +335,26 @@ wolfson/
 ├── demo.py                       Feature-focused testing without the arc
 ├── test-midi-in.py               Verify MIDI input port and event routing
 ├── osc-monitor.py                Print incoming OSC messages (test OSC output)
-├── config.py                     All tunable parameters
+├── config.py                     All tunable parameters (incl. SELF_PLAY_CH_A/B)
 ├── wolfson_train.ipynb           Google Colab training notebook
 ├── requirements.txt
 ├── input/
 │   ├── midi_listener.py          MIDI input, note events
 │   ├── phrase_detector.py        Segments note stream into phrases
-│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing, dynamics, energy profile, interval motifs
+│   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing, dynamics, energy profile, interval motifs, lyrical motifs
 │   └── beat_estimator.py         Live tempo estimation from bass onsets
 ├── memory/
-│   └── phrase_memory.py          Stores phrases for recall and development
+│   └── phrase_memory.py          Stores phrases + motifs + lyrical motifs for recall and development
 ├── generator/
 │   ├── lstm_model.py             LSTM with chord conditioning
-│   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading steering
+│   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, singable duration bias, rest injection, phrase length control
 │   └── train.py                  Training script
 ├── controller/
-│   ├── arc_controller.py         Arc, leadership, proactive mode
+│   ├── arc_controller.py         Arc, leadership, proactive mode, modal_strength + rhythmic_density + swing range schedules, lyrical motif recall
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
 │   ├── midi_output.py            Per-note MIDI playback with articulation
-│   ├── dashboard.py              Rich full-screen terminal display (--dashboard)
+│   ├── dashboard.py              Rich full-screen terminal display, black background, high-contrast (--dashboard)
 │   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)
 ├── data/
 │   ├── encoding.py               Pitch+duration token encoding

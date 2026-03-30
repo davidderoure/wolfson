@@ -30,7 +30,7 @@ from collections import Counter, deque
 
 from input.midi_listener    import MidiListener
 from input.phrase_detector  import PhraseDetector
-from input.phrase_analyzer  import analyze, extract_interval_motifs
+from input.phrase_analyzer  import analyze, extract_interval_motifs, extract_lyrical_motifs
 from input.beat_estimator   import BeatEstimator
 from memory.phrase_memory   import PhraseMemory
 from generator.phrase_generator import PhraseGenerator
@@ -41,7 +41,8 @@ from output.osc_output      import OscOutput
 from config import (
     DEFAULT_INSTRUMENT, TEMPO_HINT_BPM,
     DASHBOARD_ENABLED, OSC_ENABLED, OSC_HOST, OSC_PORT,
-    ARC,
+    ARC, REST_PITCH,
+    SELF_PLAY_CH_A, SELF_PLAY_CH_B,
 )
 
 # Total arc duration in seconds (end of the last stage)
@@ -155,6 +156,13 @@ def main():
     _sax_lock = threading.Lock()   # one sax phrase at a time
     _stats    = _PhraseStats()
 
+    # Self-play two-channel dialogue.
+    # Phrases alternate between SELF_PLAY_CH_A and SELF_PLAY_CH_B so a DAW
+    # can route them to separate sounds (e.g. alto sax / tenor sax), making
+    # the call-and-response structure directly audible.
+    # Stored as a one-element list so the closure can mutate it.
+    _sp_parity = [0]   # 0 → CH_A, 1 → CH_B; flipped after every phrase
+
     dashboard = WolfsonDashboard() if use_dashboard else None
     osc_out   = OscOutput(osc_host, args.osc_port) if osc_host else None
 
@@ -181,6 +189,14 @@ def main():
         notes_out    = []
         beat_dur_sec = beats.beat_duration
 
+        # In self-play, alternate between the two dialogue channels so each
+        # "voice" stays on its own MIDI channel throughout the performance.
+        # In live-bass mode, always use CH_A (channel 1).
+        out_channel = (
+            (SELF_PLAY_CH_A if _sp_parity[0] == 0 else SELF_PLAY_CH_B)
+            if self_play else SELF_PLAY_CH_A
+        )
+
         try:
             notes = generator.generate(
                 seed_phrase         = params["seed"],
@@ -194,6 +210,8 @@ def main():
                 phrase_energy_arc   = params.get("phrase_energy_arc", "flat"),
                 motif_targets       = params.get("motif_targets", []),
                 motif_strength      = params.get("motif_strength", 0.0),
+                modal_strength      = params.get("modal_strength", 0.0),
+                rhythmic_density    = params.get("rhythmic_density", 0.5),
             )
             if not notes:
                 # Model generated nothing (END_TOKEN sampled immediately).
@@ -213,21 +231,25 @@ def main():
             durations_sec = [n["duration_beats"] * beat_dur_sec for n in notes]
 
             # Build a properly-timed sax phrase for memory storage.
+            # Rest sentinels advance the clock but are not stored as pitched notes.
             _t = 0.0
             sax_phrase = []
             base_vel   = params.get("velocity", 80)
             for n in notes:
                 dur_sec = n["duration_beats"] * beat_dur_sec
-                sax_phrase.append({
-                    "pitch":        n["pitch"],
-                    "velocity":     80,
-                    "onset":        _t,
-                    "offset":       _t + dur_sec,
-                    "beat_dur_sec": beat_dur_sec,
-                })
+                if n["pitch"] != REST_PITCH:
+                    sax_phrase.append({
+                        "pitch":        n["pitch"],
+                        "velocity":     80,
+                        "onset":        _t,
+                        "offset":       _t + dur_sec,
+                        "beat_dur_sec": beat_dur_sec,
+                    })
                 _t += dur_sec
-            sax_motifs = extract_interval_motifs(notes)
-            memory.store(sax_phrase, source="sax", motifs=sax_motifs)
+            sax_motifs         = extract_interval_motifs(notes)
+            sax_lyrical_motifs = extract_lyrical_motifs(notes)
+            memory.store(sax_phrase, source="sax",
+                         motifs=sax_motifs, lyrical_motifs=sax_lyrical_motifs)
 
             # Update displays and send OSC before playback so receivers
             # can react in sync with the first note.
@@ -235,7 +257,7 @@ def main():
                 dashboard.update(params, notes, beats.bpm,
                                  arc.elapsed(), triggered_by)
             else:
-                _log(params, triggered_by, notes, beats.bpm)
+                _log(params, triggered_by, notes, beats.bpm, out_channel)
 
             if osc_out:
                 osc_out.send_phrase(params, notes, beats.bpm,
@@ -250,6 +272,7 @@ def main():
                 pitches   = [n["pitch"] for n in notes],
                 durations = durations_sec,
                 velocity  = per_note_vel,
+                channel   = out_channel,
             )
 
             notes_out = notes   # capture after successful play
@@ -261,6 +284,8 @@ def main():
 
         finally:
             arc.on_sax_played()
+            if self_play:
+                _sp_parity[0] ^= 1   # flip 0↔1 for next phrase
             _sax_lock.release()
 
         # Self-play feedback — lock already released before this runs
@@ -285,18 +310,20 @@ def main():
             onset  = 0.0
             for n in notes:
                 dur_sec = n["duration_beats"] * beat_dur_sec
-                phrase.append({
-                    "pitch":        n["pitch"],
-                    "velocity":     64,
-                    "onset":        now + onset,
-                    "offset":       now + onset + dur_sec,
-                    "beat_dur_sec": beat_dur_sec,
-                })
+                if n["pitch"] != REST_PITCH:
+                    phrase.append({
+                        "pitch":        n["pitch"],
+                        "velocity":     64,
+                        "onset":        now + onset,
+                        "offset":       now + onset + dur_sec,
+                        "beat_dur_sec": beat_dur_sec,
+                    })
                 # Do NOT call beats.note_on() in self-play — the generated
                 # note IOIs are at the generation tempo, not the live-input
                 # tempo, and would cause the estimator to runaway to 300+ BPM.
                 onset += dur_sec
-            on_bass_phrase(phrase)
+            if phrase:
+                on_bass_phrase(phrase)
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -389,7 +416,7 @@ def main():
             dashboard.stop()
         if not self_play:
             listener.stop()
-        midi_out.silence()
+        midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])
         midi_out.stop()
 
 
@@ -397,7 +424,8 @@ def main():
 # Console logging
 # ------------------------------------------------------------------
 
-def _log(params: dict, triggered_by: str, notes: list, bpm: float):
+def _log(params: dict, triggered_by: str, notes: list, bpm: float,
+         channel: int = 1):
     stage   = params.get("stage", "?")
     lead    = params.get("leadership", "?")
     mode    = params.get("mode", "?")
@@ -407,11 +435,14 @@ def _log(params: dict, triggered_by: str, notes: list, bpm: float):
     arc     = params.get("phrase_energy_arc", "flat")
     motifs  = len(params.get("motif_targets", []))
     vel     = params.get("velocity", 80)
+    modal   = params.get("modal_strength", 0.0)
+    density = params.get("rhythmic_density", 0.5)
     print(
-        f"[{stage:>14s}]  {bpm:5.1f} bpm  lead={lead:<3s}  "
+        f"[{stage:>14s}]  {bpm:5.1f} bpm  ch={channel}  lead={lead:<3s}  "
         f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
         f"harm={harm:<12s}  scale={src:<5s}  arc={arc:<9s}  "
-        f"motifs={motifs}  contour={contour:<10s}  vel={vel:3d}  n={len(notes)}"
+        f"motifs={motifs}  contour={contour:<10s}  vel={vel:3d}  "
+        f"modal={modal:.1f}  density={density:.1f}  n={len(notes)}"
     )
 
 

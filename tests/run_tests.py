@@ -227,6 +227,10 @@ def build_demo_midi(segments):
         sax_start = cursor
         for n in sax_response:
             dur_sec = n["duration_beats"] * beat_dur
+            if n["pitch"] < 0:
+                # Rest sentinel — advance the cursor but emit no MIDI note
+                sax_start += dur_sec
+                continue
             end_sec = sax_start + dur_sec * 0.85
             # Use per-note velocity if available
             note_vel = max(40, min(110, int(

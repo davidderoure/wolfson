@@ -2,7 +2,7 @@
 
 import rtmidi
 import time
-from config import MIDI_OUTPUT_PORT
+from config import MIDI_OUTPUT_PORT, REST_PITCH
 
 DEFAULT_VELOCITY    = 80
 ARTICULATION_RATIO  = 0.85   # note sounds for this fraction of its slot; rest is silence
@@ -40,6 +40,10 @@ class MidiOutput:
         """
         ch = channel - 1
         for i, (pitch, dur) in enumerate(zip(pitches, durations)):
+            if pitch == REST_PITCH:
+                # Silence sentinel — just wait, no MIDI output
+                time.sleep(dur)
+                continue
             vel         = velocity[i] if isinstance(velocity, list) else velocity
             vel         = max(1, min(127, int(vel)))
             sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
@@ -49,7 +53,15 @@ class MidiOutput:
             self._midi_out.send_message([0x80 | ch, pitch, 0])
             time.sleep(silence_dur)
 
-    def silence(self, channel: int = 1):
-        """Send all-notes-off on the output channel."""
-        ch = channel - 1
-        self._midi_out.send_message([0xB0 | ch, 123, 0])
+    def silence(self, channels=1):
+        """
+        Send all-notes-off on one or more MIDI channels.
+
+        channels may be a single int or a list/tuple of ints, e.g.
+        ``silence(1)``, ``silence([1, 2])``.
+        """
+        if isinstance(channels, int):
+            channels = [channels]
+        for channel in channels:
+            ch = channel - 1
+            self._midi_out.send_message([0xB0 | ch, 123, 0])

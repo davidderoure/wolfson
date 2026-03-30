@@ -24,7 +24,12 @@ Biases are calibrated so their combined effect at any step stays musical:
   voice leading   max ~1.0 logits (grows with arc_position)
   motif           2.0 logits on one specific token (sparse, fires rarely)
   scale           2.0 logits (flat on all in-scale tokens)
-  stepwise        0.4 logits on ±1–2 semitone tokens
+  stepwise        0.1 logits on ±1–2 semitone tokens (reduced from 0.4)
+  leap incentive  0.3–0.5 logits on 3rd–5th interval tokens
+  register gravity  max ~2.0 logits downward push above C5
+  long-note penalty max ~2.5 logits on duration tokens > 2 beats
+  singable dur bias max ~1.5 logits on quarter-note range tokens (bell curve, scaled by 1−rhythmic_density;
+                    2× momentum boost when rolling mean note dur drops below 0.35 beats)
 """
 
 import sys
@@ -35,15 +40,18 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import random
+from collections import deque
+
 from data.encoding import (
     phrase_to_tokens, phrase_to_chord_sequence, tokens_to_phrase,
     END_TOKEN, VOCAB_SIZE, DUR_OFFSET, N_PITCHES, N_DUR_BUCKETS,
-    dur_to_token, token_to_pitch, pitch_to_token,
+    dur_to_token, token_to_pitch, pitch_to_token, token_to_dur,
 )
 from data.chords import NC_INDEX, CHORD_VOCAB_SIZE
 from data.scales import chord_tones
 from generator.lstm_model import PhraseModel
-from config import MAX_GENERATED_NOTES, GENERATION_TEMPERATURE, DEFAULT_INSTRUMENT
+from config import MAX_GENERATED_NOTES, GENERATION_TEMPERATURE, DEFAULT_INSTRUMENT, REST_PITCH
 
 MODELS_DIR = Path(__file__).parent.parent / "models"
 
@@ -81,13 +89,60 @@ MOTIF_BIAS_STRENGTH   = 2.0  # logit bias for motif-continuation pitch token
 # Voice leading
 VOICE_LEADING_STRENGTH = 0.6  # max chord-tone boost (scales with arc_position)
                                # reduced from 1.0 — prevents over-sticky cadences
-STEPWISE_BIAS_STRENGTH = 0.4  # gentle bias toward ±1–2 semitone motion
+STEPWISE_BIAS_STRENGTH = 0.1  # gentle bias toward ±1–2 semitone motion
+                               # reduced from 0.4 — was partially cancelling repeat penalty
 
 # Repetition penalty — discourages consecutive repeated notes
 # Grows with the number of consecutive repeats so an occasional same-note
 # passing tone is allowed but long runs are strongly suppressed.
-REPEAT_PENALTY_BASE    = 1.5  # logit penalty for first immediate repeat
-REPEAT_PENALTY_SCALE   = 1.0  # additional penalty per further consecutive repeat
+REPEAT_PENALTY_BASE    = 2.5  # logit penalty for first immediate repeat (was 1.5)
+REPEAT_PENALTY_SCALE   = 2.0  # additional penalty per further consecutive repeat (was 1.0)
+
+# Leap incentive — bonus logits for melodic intervals of a 3rd to a 5th.
+# Complements the reduced stepwise bias to increase melodic shape.
+LEAP_BIAS_INTERVALS = {3: 0.5, 4: 0.5, 5: 0.4, 6: 0.3, 7: 0.3}
+
+# Modal leap bonus — additional P4 and P5 boost applied in modal stages.
+# Scaled by modal_strength (0.0–1.0) passed from the arc controller.
+# P4 (5 semitones) and P5 (7 semitones) are the characteristic intervals
+# of quartal harmony and modal pentatonic playing (Tyner, Hancock, Shorter).
+MODAL_P4_BONUS = 1.2   # extra logits on P4 at full modal_strength
+MODAL_P5_BONUS = 0.8   # extra logits on P5 at full modal_strength
+
+# Register gravity — pulls pitch distribution toward the middle register.
+# No penalty below C5; increasing downward push above C5.
+REGISTER_PIVOT_TOKEN  = 28   # C5 = MIDI 72, token = 72 - PITCH_MIN(44) = 28
+REGISTER_BASE_PENALTY = 0.5  # logit penalty applied at the pivot
+REGISTER_SLOPE        = 1.5  # additional logit penalty per token above pivot
+                              # (divided by remaining token range C5→E6 = 16 tokens)
+
+# Long-note penalty — graduated logit penalty on duration tokens above 2 beats.
+# Prevents the generator locking into very slow, sustained passages.
+LONG_NOTE_PENALTY_START = 77   # first duration token to penalise (≈ 2.0 beats)
+LONG_NOTE_PENALTY_STEP  = 0.5  # additional logit penalty per token beyond start
+
+# Hard beat accumulator — phrase stops when this many beats have been generated.
+MAX_PHRASE_BEATS = 16.0
+
+# Singable duration bias — positive logit boost on quarter-note range tokens.
+# Counters the LSTM's trained bias toward 16th-note busyness by pulling duration
+# sampling toward the 0.5–1.7 beat range (approx tokens 68–76) where sustained,
+# melodic, "singable" lines live.  Bell curve centred on token 72 (≈ 0.95 beats,
+# just under a quarter note at 120 BPM).
+# Applied scaled by (1 - rhythmic_density) so it is strongest in lyrical stages
+# (sparse, resolution) and silenced at the busy peak.
+SINGABLE_DUR_STRENGTH = 1.5    # peak logit boost at the bell-curve centre
+SINGABLE_DUR_CENTER   = 72     # token ≈ 0.95 beats (quarter note)
+SINGABLE_DUR_WIDTH    = 4.5    # half-width (tokens) — controls how wide the bell is
+
+# Duration momentum — amplify the singable bias when recent notes have been short.
+# Tracks the last WINDOW note durations; if their mean falls below THRESHOLD beats
+# the singable_strength is multiplied by BOOST, pulling the next notes back toward
+# longer, more lyrical values.  This clusters long notes into sustained runs rather
+# than scattering them among 16th-note bursts.
+MELODIC_MOMENTUM_WINDOW    = 4     # rolling window of recent note durations
+MELODIC_MOMENTUM_THRESHOLD = 0.35  # beats — below this mean triggers the boost
+MELODIC_MOMENTUM_BOOST     = 2.0   # multiplier on singable_strength when triggered
 
 
 class PhraseGenerator:
@@ -121,6 +176,8 @@ class PhraseGenerator:
         phrase_energy_arc:   str        = "flat",
         motif_targets:       list       = None,
         motif_strength:      float      = 0.0,
+        modal_strength:      float      = 0.0,
+        rhythmic_density:    float      = 0.5,
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
@@ -133,16 +190,24 @@ class PhraseGenerator:
         scale_pitch_classes frozenset of pitch classes (0–11) for scale bias
         phrase_energy_arc   internal energy shape: 'arch'|'ramp_up'|'ramp_down'|
                             'spike'|'flat'
+        modal_strength      0–1 scale on extra P4/P5 leap bonus; set by arc
+                            controller (high during modal stages: building, peak)
         motif_targets       list of interval tuples to lean toward, e.g. [(2,-1,5)]
         motif_strength      0–1 scale on MOTIF_BIAS_STRENGTH
+        rhythmic_density    0–1 busyness from arc controller; 0=lyrical/slow,
+                            1=bebop/fast.  Scales singable-duration bias inversely:
+                            full boost at density=0, none at density=1.
 
         Returns list of {pitch, duration_beats, velocity_scale} dicts.
         velocity_scale is 0.75–1.25; apply to base phrase velocity in the caller.
         """
         n_notes       = n_notes     or MAX_GENERATED_NOTES
         temperature   = temperature or GENERATION_TEMPERATURE
-        motif_targets = motif_targets or []
-        arc_active    = phrase_energy_arc != "flat"
+        motif_targets     = motif_targets or []
+        arc_active        = phrase_energy_arc != "flat"
+        modal_strength    = max(0.0, min(1.0, modal_strength))
+        rhythmic_density  = max(0.0, min(1.0, rhythmic_density))
+        singable_strength = SINGABLE_DUR_STRENGTH * (1.0 - rhythmic_density)
 
         # Seed mean pitch — contour reference for the first generated note
         seed_pitches    = [n["pitch"] for n in seed_phrase if "pitch" in n]
@@ -161,6 +226,8 @@ class PhraseGenerator:
         hidden              = None
         last_pitch_token    = -1   # most recent generated pitch token; -1 = none yet
         consecutive_repeats = 0    # how many times last_pitch_token has been repeated
+        accumulated_beats   = 0.0  # total beat-duration of notes generated so far
+        recent_durs         = deque(maxlen=MELODIC_MOMENTUM_WINDOW)  # duration momentum
 
         # Reduce contour strength when energy arc is also active (shared budget)
         contour_strength = (
@@ -190,6 +257,9 @@ class PhraseGenerator:
                     # Pitch-range soft limits (precomputed)
                     tok_logits = tok_logits + _PITCH_RANGE_BIAS
 
+                    # Register gravity — pull toward middle register (below C5)
+                    tok_logits = tok_logits + _REGISTER_GRAVITY_BIAS
+
                     # Scale / mode bias
                     if scale_pitch_classes:
                         tok_logits = _apply_scale_bias(tok_logits, scale_pitch_classes)
@@ -216,8 +286,10 @@ class PhraseGenerator:
                         )
 
                     # Voice leading — chord-tone endpoint bias + stepwise preference
+                    # + stage-aware modal leap bonus (P4/P5 in modal stages)
                     tok_logits = _apply_voice_leading_bias(
                         tok_logits, arc_position, chord_idx, last_pitch_token,
+                        modal_strength=modal_strength,
                     )
 
                     # Repetition penalty — suppress running on the same note
@@ -227,6 +299,22 @@ class PhraseGenerator:
                         )
 
                 elif expecting == "duration":
+                    # Long-note penalty — discourage notes > ~2 beats
+                    tok_logits = tok_logits + _LONG_NOTE_BIAS
+
+                    # Singable duration bias — pull toward quarter-note range.
+                    # Momentum boost: if recent notes have been short (mean below
+                    # threshold), amplify the bias to cluster long notes together
+                    # into sustained runs rather than isolated long notes.
+                    if singable_strength > 0.0:
+                        if (len(recent_durs) >= 2
+                                and sum(recent_durs) / len(recent_durs)
+                                < MELODIC_MOMENTUM_THRESHOLD):
+                            effective_singable = singable_strength * MELODIC_MOMENTUM_BOOST
+                        else:
+                            effective_singable = singable_strength
+                        tok_logits = tok_logits + _SINGABLE_DUR_BIAS * effective_singable
+
                     # Triplet/swing bias
                     if swing_bias > 0.0:
                         tok_logits = _apply_swing_bias(tok_logits, swing_bias)
@@ -256,12 +344,27 @@ class PhraseGenerator:
                     note_count += 1
                     expecting = "duration"
                 else:
+                    # Duration token — accumulate beats, update momentum, check cap
+                    dur_beats          = token_to_dur(token)
+                    accumulated_beats += dur_beats
+                    recent_durs.append(dur_beats)
+                    if accumulated_beats >= MAX_PHRASE_BEATS:
+                        break
                     expecting = "pitch"
 
         notes = tokens_to_phrase(generated_tokens)
+
+        # Inject internal rests — bell-curve probability peaking at phrase midpoint.
+        # Rests are sentinel dicts (pitch = REST_PITCH) handled by MidiOutput.
+        notes = _inject_rests(notes)
+
         n = len(notes)
 
         for i, note in enumerate(notes):
+            if note["pitch"] == REST_PITCH:
+                note.setdefault("velocity_scale", 1.0)
+                continue
+
             # Minimum duration floor
             note["duration_beats"] = max(note["duration_beats"], MIN_DURATION_BEATS)
 
@@ -306,6 +409,49 @@ def _apply_pitch_range_bias() -> torch.Tensor:
     return bias
 
 _PITCH_RANGE_BIAS: torch.Tensor = _apply_pitch_range_bias()
+
+
+def _build_register_gravity_bias() -> torch.Tensor:
+    """Increasing downward logit push for pitch tokens above C5 (token 28)."""
+    bias = torch.zeros(VOCAB_SIZE)
+    for tok in range(N_PITCHES):
+        if tok > REGISTER_PIVOT_TOKEN:
+            above = tok - REGISTER_PIVOT_TOKEN
+            bias[tok] = -(REGISTER_BASE_PENALTY + above * REGISTER_SLOPE / 16.0)
+    return bias
+
+_REGISTER_GRAVITY_BIAS: torch.Tensor = _build_register_gravity_bias()
+
+
+def _build_long_note_bias() -> torch.Tensor:
+    """Graduated logit penalty on duration tokens ≥ LONG_NOTE_PENALTY_START."""
+    bias = torch.zeros(VOCAB_SIZE)
+    for tok in range(LONG_NOTE_PENALTY_START, END_TOKEN):
+        steps = tok - LONG_NOTE_PENALTY_START + 1
+        bias[tok] = -(steps * LONG_NOTE_PENALTY_STEP)
+    return bias
+
+_LONG_NOTE_BIAS: torch.Tensor = _build_long_note_bias()
+
+
+def _build_singable_dur_bias() -> torch.Tensor:
+    """
+    Bell-curve logit boost centred on the quarter-note duration token.
+
+    Creates a positive pull toward the 0.5–1.7 beat range so that the model
+    generates sustained, melodic lines rather than continuous 16th-note streams.
+    At full strength (rhythmic_density=0) the peak boost at the centre token
+    is SINGABLE_DUR_STRENGTH.  The tensor is normalised to 1.0 at the peak;
+    the caller multiplies by singable_strength = SINGABLE_DUR_STRENGTH * (1 - density).
+    """
+    import math
+    bias = torch.zeros(VOCAB_SIZE)
+    for tok in range(DUR_OFFSET, END_TOKEN):
+        dist = tok - SINGABLE_DUR_CENTER
+        bias[tok] = math.exp(-0.5 * (dist / SINGABLE_DUR_WIDTH) ** 2)
+    return bias
+
+_SINGABLE_DUR_BIAS: torch.Tensor = _build_singable_dur_bias()
 
 # Duration split: tokens below this index are "short" (< ~0.5 beats)
 _ENERGY_DUR_SPLIT: int = dur_to_token(0.5)
@@ -524,6 +670,47 @@ def _apply_motif_bias(
 
 
 # ---------------------------------------------------------------------------
+# Rest injection
+# ---------------------------------------------------------------------------
+
+REST_MAX_PROBABILITY = 0.15   # peak probability of a breath/silence mid-phrase
+_REST_DURATIONS      = [0.5, 1.0]   # beat durations available for rests
+
+
+def _rest_probability(arc_position: float) -> float:
+    """
+    Bell-curve rest probability: zero at phrase start and end, peak at midpoint.
+    arc_position is 0.0 → 1.0 across the phrase.
+    """
+    return 4.0 * arc_position * (1.0 - arc_position) * REST_MAX_PROBABILITY
+
+
+def _inject_rests(notes: list[dict]) -> list[dict]:
+    """
+    Splice silence sentinels into a phrase at musically natural points.
+
+    For each gap between adjacent notes (i → i+1), draw against a
+    bell-curve probability so rests cluster around the phrase midpoint
+    rather than at the very start or end.  The resulting list may contain
+    REST_PITCH sentinel dicts alongside ordinary note dicts.
+    """
+    if len(notes) < 3:
+        return notes   # too short to breathe
+
+    out = [notes[0]]
+    for i, note in enumerate(notes[1:], start=1):
+        arc_pos = i / max(len(notes) - 1, 1)
+        if random.random() < _rest_probability(arc_pos):
+            out.append({
+                "pitch":          REST_PITCH,
+                "duration_beats": random.choice(_REST_DURATIONS),
+                "velocity_scale": 1.0,
+            })
+        out.append(note)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Bias helpers — voice leading
 # ---------------------------------------------------------------------------
 
@@ -553,18 +740,24 @@ def _apply_voice_leading_bias(
     arc_position:     float,
     chord_idx:        int,
     last_pitch_token: int,
+    modal_strength:   float = 0.0,
 ) -> torch.Tensor:
     """
-    Two complementary voice-leading nudges:
+    Three complementary voice-leading nudges:
 
     1. Chord-tone targeting — grows linearly with arc_position so that by the
        end of the phrase the sax is being pushed toward root, 3rd, and 7th.
        No effect at the start (arc_position=0) so melodic freedom is preserved
        through the phrase body.
 
-    2. Stepwise motion preference — a small constant bias toward pitches ±1 or
-       ±2 semitones from the last generated pitch, encouraging smooth contrary
-       motion rather than large leaps. Active throughout once a pitch exists.
+    2. Interval shaping — small constant bias toward ±1–2 semitone steps
+       (reduced from original 0.4), plus a gentle leap incentive for 3rds–5ths,
+       to increase melodic shape and reduce chromatic-passing saturation.
+
+    3. Modal leap bonus — extra boost on P4 (5 st) and P5 (7 st) intervals,
+       scaled by modal_strength (0–1). This reflects the quartal/pentatonic
+       character of modal jazz stages (building, peak) where 4th-based motion
+       is stylistically expected but under-represented by the base LSTM.
     """
     from data.encoding import PITCH_MIN
 
@@ -578,11 +771,24 @@ def _apply_voice_leading_bias(
             if (PITCH_MIN + tok) % 12 in tones:
                 bias[tok] += ct_strength
 
-    # 2. Stepwise motion preference
+    # 2. Interval shaping: reduced stepwise preference + leap incentive
     if last_pitch_token >= 0:
         for tok in range(N_PITCHES):
             interval = abs(tok - last_pitch_token)
             if interval <= 2:
+                # Stepwise (reduced strength)
                 bias[tok] += STEPWISE_BIAS_STRENGTH * (1.0 - interval / 3.0)
+            elif interval in LEAP_BIAS_INTERVALS:
+                # 3rd–5th leaps: small positive nudge for melodic shape
+                bias[tok] += LEAP_BIAS_INTERVALS[interval]
+
+    # 3. Modal leap bonus — P4 and P5 amplified during modal stages
+    if last_pitch_token >= 0 and modal_strength > 0.0:
+        for tok in range(N_PITCHES):
+            interval = abs(tok - last_pitch_token)
+            if interval == 5:   # P4
+                bias[tok] += MODAL_P4_BONUS * modal_strength
+            elif interval == 7:  # P5
+                bias[tok] += MODAL_P5_BONUS * modal_strength
 
     return logits + bias

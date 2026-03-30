@@ -235,18 +235,39 @@ class ArcController:
         # ------------------------------------------------------------------
         # Motivic development — find recurring interval patterns in memory
         # Only use motifs seen at least twice; strength scales with stage.
+        #
+        # Lyrical motifs (extracted from sustained sax notes) are blended in
+        # during quiet stages (recap, resolution) so the sax quotes back its
+        # own singable lines rather than just any interval fragment.
         # ------------------------------------------------------------------
-        motif_counter  = self.memory.recall_motifs(source=None, n_recent=16)
-        motif_targets  = [m for m, cnt in motif_counter.most_common(2) if cnt >= 2]
-        motif_strength = _stage_motif_strength(stage)
+        motif_counter     = self.memory.recall_motifs(source=None, n_recent=16)
+        motif_targets     = [m for m, cnt in motif_counter.most_common(2) if cnt >= 2]
+        motif_strength    = _stage_motif_strength(stage)
+
+        lyrical_strength  = _stage_lyrical_motif_strength(stage)
+        if lyrical_strength > 0.0:
+            lyrical_counter = self.memory.recall_lyrical_motifs(source="sax", n_recent=16)
+            lyrical_targets = [m for m, cnt in lyrical_counter.most_common(2) if cnt >= 2]
+            if lyrical_targets:
+                # Put the top lyrical motif first; fill remaining slot from
+                # the general pool (so we don't lose all non-lyrical development)
+                motif_targets  = lyrical_targets[:1] + [
+                    m for m in motif_targets if m not in lyrical_targets
+                ][:1]
+                motif_strength = max(motif_strength, lyrical_strength)
+        modal_strength    = _stage_modal_strength(stage)
+        rhythmic_density  = _stage_rhythmic_density(stage)
 
         contour_target = complement_contour(features)
 
-        # Phrase length: longer when sax leads, shorter when following
-        sax_leads = (self._leadership == "sax") or proactive
-        base_len  = _stage_base_length(stage)
-        n_notes   = int(base_len * (1.3 if sax_leads else 0.8))
-        n_notes   = max(3, n_notes)
+        # Phrase length: longer when sax leads, shorter when following.
+        # Hard cap at 14 prevents runaway phrases; stage floor ensures even
+        # the shortest "following" phrases are long enough to be musical.
+        sax_leads   = (self._leadership == "sax") or proactive
+        base_len    = _stage_base_length(stage)
+        n_notes     = int(base_len * (1.1 if sax_leads else 0.75))
+        n_notes_min = _stage_n_notes_floor(stage)
+        n_notes     = max(n_notes_min, min(n_notes, 14))
 
         temperature = _stage_temperature(stage)
 
@@ -288,6 +309,8 @@ class ArcController:
             "phrase_energy_arc":   phrase_energy_arc,
             "motif_targets":       motif_targets,
             "motif_strength":      motif_strength,
+            "modal_strength":      modal_strength,
+            "rhythmic_density":    rhythmic_density,
         }
 
 
@@ -298,9 +321,9 @@ class ArcController:
 def _stage_base_length(stage: str) -> int:
     return {
         "sparse":         5,
-        "building":       9,
-        "peak":          14,
-        "recapitulation": 9,
+        "building":       8,   # was 9
+        "peak":          12,   # was 14
+        "recapitulation": 8,   # was 9
         "resolution":     4,
     }.get(stage, 6)
 
@@ -315,27 +338,67 @@ def _stage_temperature(stage: str) -> float:
     }.get(stage, 0.90)
 
 
+def _stage_swing_range(stage: str) -> tuple:
+    """
+    (min_swing, max_swing) band for each arc stage.
+
+    The reactive feel-detection result is clamped to this band so that:
+
+      sparse       — exploratory / rubato; never hard swing regardless of
+                     what the detector reads.  The sax can sound almost
+                     straight here, with just a hint of triplet colour.
+      building     — groove establishing; always at least a light swing,
+                     never locked all the way into full bebop triplets yet.
+      peak         — hard swing; bypassed by the hard-coded 0.7 return.
+      recapitulation — medium swing; recalls the feel without the bebop
+                     intensity of the peak.
+      resolution   — ballad lilt; gentle triplet colour, never busy swing.
+
+    The band also breaks the self-play oscillation: lyrical long notes look
+    "straight" to the detector → reactive=1.0; clamping to the stage ceiling
+    stops that from forcing hard swing at quiet stages.
+    """
+    return {
+        "sparse":          (0.0,  0.25),
+        "building":        (0.3,  0.65),
+        "peak":            (0.7,  0.7),   # hard-coded below; range unused
+        "recapitulation":  (0.3,  0.60),
+        "resolution":      (0.1,  0.30),
+    }.get(stage, (0.2, 0.5))
+
+
 def _compute_swing_bias(features: dict, stage: str) -> float:
     """
     Decide how strongly to bias sax duration tokens toward the triplet grid.
 
-    Logic:
-      - Straight bass feel  → strong triplet bias (rhythmic contrast)
-      - Swinging bass feel  → no extra bias (LSTM already learned swing)
-      - Mixed/unknown       → light bias as default swing flavour
-      - Peak stage          → always some bias (maximum rhythmic interest)
+    Reactive component (from detected bass feel):
+      straight → 1.0   maximum contrast: straight call → triplet response
+      swing    → 0.0   let the stage range floor govern
+      mixed    → 0.3   light default swing flavour
+
+    The reactive value is then clamped to the stage's (min, max) band
+    (see _stage_swing_range).  This gives each stage a distinct swing
+    character that no detected feel can override:
+
+      sparse      0.00–0.25   exploratory, barely swung
+      building    0.30–0.65   groove warming up
+      peak        0.70        always hard bebop swing
+      recap       0.30–0.60   medium swing recall
+      resolution  0.10–0.30   gentle ballad lilt
     """
-    feel = features.get("rhythmic_feel", "mixed")
-
     if stage == "peak":
-        return 0.7   # always push triplet feel at peak intensity
+        return 0.7   # hard-coded: peak is always hard swing
 
+    feel = features.get("rhythmic_feel", "mixed")
     if feel == "straight":
-        return 1.0   # maximum contrast: straight call → triplet response
+        reactive = 1.0
     elif feel == "swing":
-        return 0.0   # already swinging; let the model do its thing
+        reactive = 0.0
     else:
-        return 0.3   # light default swing flavour
+        reactive = 0.3
+
+    lo, hi = _stage_swing_range(stage)
+    return min(hi, max(lo, reactive))
 
 
 def _compute_velocity(features: dict, stage: str) -> int:
@@ -367,6 +430,60 @@ def _compute_velocity(features: dict, stage: str) -> int:
     return max(40, min(110, int(base * stage_scale)))
 
 
+def _stage_n_notes_floor(stage: str) -> int:
+    """
+    Minimum phrase length (notes) at each stage.
+
+    Ensures that even the shortest "following" phrase (base_len × 0.75) is
+    long enough to be musically meaningful once the singable-duration bias
+    pulls individual notes toward quarter-note lengths.
+    """
+    return {
+        "sparse":          3,
+        "building":        6,
+        "peak":            8,
+        "recapitulation":  6,
+        "resolution":      4,
+    }.get(stage, 4)
+
+
+def _stage_rhythmic_density(stage: str) -> float:
+    """
+    How busy/fast the sax should feel at each stage (0.0 = lyrical, 1.0 = bebop).
+
+    Passed to PhraseGenerator as `rhythmic_density`; the singable-duration bias
+    is scaled by (1 − rhythmic_density), so density=0 gives the full quarter-note
+    pull and density=1 suppresses it entirely.
+
+    Sparse and resolution are the most lyrical; peak is the busiest.
+    """
+    return {
+        "sparse":          0.2,
+        "building":        0.5,
+        "peak":            0.9,
+        "recapitulation":  0.3,
+        "resolution":      0.1,
+    }.get(stage, 0.5)
+
+
+def _stage_modal_strength(stage: str) -> float:
+    """
+    How strongly to boost P4/P5 leaps at each stage.
+
+    Zero during tonal stages (sparse, resolution) where chromatic guide-tone
+    motion is appropriate.  Rises through building; peaks at the modal climax.
+    Recapitulation retains a modest lift as the harmonic language quotes back
+    the modal material without fully committing to it.
+    """
+    return {
+        "sparse":          0.0,
+        "building":        0.6,
+        "peak":            1.0,
+        "recapitulation":  0.4,
+        "resolution":      0.0,
+    }.get(stage, 0.0)
+
+
 def _stage_motif_strength(stage: str) -> float:
     """
     How strongly to bias toward recognised interval motifs at each stage.
@@ -381,6 +498,25 @@ def _stage_motif_strength(stage: str) -> float:
         "peak":            0.6,
         "recapitulation":  0.8,
         "resolution":      0.4,
+    }.get(stage, 0.0)
+
+
+def _stage_lyrical_motif_strength(stage: str) -> float:
+    """
+    How strongly to bias toward *lyrical* (sustained-note) sax motifs.
+
+    Zero during the busy peak — those motifs are ornamental fragments.
+    Strong in recapitulation and resolution, where the sax should quote back
+    the singable themes it built earlier, creating a sense of returning home.
+    Building gets a small lift so lyrical seeds planted early start to
+    re-emerge before the recapitulation makes them explicit.
+    """
+    return {
+        "sparse":          0.0,
+        "building":        0.2,
+        "peak":            0.0,
+        "recapitulation":  0.7,
+        "resolution":      0.5,
     }.get(stage, 0.0)
 
 

@@ -182,6 +182,37 @@ def extract_interval_motifs(phrase: list[dict]) -> list:
     return motifs
 
 
+def extract_lyrical_motifs(phrase: list[dict], min_dur_beats: float = 0.4) -> list:
+    """
+    Extract interval n-grams only from the *sustained* (singable) notes in a phrase.
+
+    Filters the phrase to notes whose ``duration_beats`` is at or above
+    ``min_dur_beats`` before computing interval sequences.  This captures the
+    melodic shapes that belong to lyrical, singable passages rather than fast
+    ornamental runs, so they can be recalled and developed during quieter,
+    more melodic stages of the arc.
+
+    Notes that lack a ``duration_beats`` key are silently skipped; if fewer
+    than two qualifying notes remain the function returns an empty list.
+
+    Returns a list of signed-semitone interval tuples (same format as
+    ``extract_interval_motifs``).
+    """
+    lyrical = [
+        n for n in phrase
+        if "pitch" in n and n.get("duration_beats", 0.0) >= min_dur_beats
+    ]
+    if len(lyrical) < 2:
+        return []
+    pitches   = [n["pitch"] for n in lyrical]
+    intervals = [pitches[i + 1] - pitches[i] for i in range(len(pitches) - 1)]
+    motifs    = []
+    for length in (2, 3, 4):
+        for start in range(len(intervals) - length + 1):
+            motifs.append(tuple(intervals[start : start + length]))
+    return motifs
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------

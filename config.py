@@ -2,6 +2,13 @@
 MIDI_INPUT_PORT = 0       # index of your bass pitch-to-MIDI interface
 MIDI_OUTPUT_PORT = 1      # index of synth/output for the sax voice
 
+# Self-play two-channel split
+# In --self-play mode the two voices alternate between these MIDI channels
+# so they can be routed to different sounds in a DAW (e.g. alto sax + tenor sax).
+# In normal (live-bass) mode the sax always plays on SELF_PLAY_CH_A.
+SELF_PLAY_CH_A = 1   # "call" voice  — odd phrases  (1, 3, 5 …)
+SELF_PLAY_CH_B = 2   # "response" voice — even phrases (2, 4, 6 …)
+
 # Phrase detection
 SILENCE_THRESHOLD_SEC = 1.0   # gap that marks a phrase boundary
 MIN_PHRASE_NOTES = 2           # ignore micro-phrases shorter than this
@@ -15,6 +22,7 @@ LSTM_NUM_LAYERS = 2
 MAX_GENERATED_NOTES = 16      # max note-pairs (pitch+dur) per sax response phrase
 GENERATION_TEMPERATURE = 0.9
 DEFAULT_INSTRUMENT = "sax"    # which trained model to load at startup
+REST_PITCH = -1                # sentinel: a note dict with this pitch = silence (no MIDI)
 
 # Tempo hint for the beat estimator (BPM).
 # Set to your approximate performance tempo if playing above ~160 BPM
