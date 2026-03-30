@@ -26,20 +26,25 @@ class MidiOutput:
         self,
         pitches:   list[int],
         durations: list[float],          # per-note duration in seconds
-        velocity:  int   = DEFAULT_VELOCITY,
+        velocity   = DEFAULT_VELOCITY,   # int OR list[int] for per-note dynamics
         channel:   int   = 1,
     ):
         """
         Play a phrase note-by-note with per-note durations.
 
+        velocity may be a single int (applied to all notes) or a list of ints
+        (one per note) for per-note dynamic shaping from the energy arc.
+
         Each note sounds for ARTICULATION_RATIO of its slot duration, with a
         short silence before the next note — giving natural sax articulation.
         """
         ch = channel - 1
-        for pitch, dur in zip(pitches, durations):
+        for i, (pitch, dur) in enumerate(zip(pitches, durations)):
+            vel         = velocity[i] if isinstance(velocity, list) else velocity
+            vel         = max(1, min(127, int(vel)))
             sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
             silence_dur = max(0.005, dur - sound_dur)
-            self._midi_out.send_message([0x90 | ch, pitch, velocity])
+            self._midi_out.send_message([0x90 | ch, pitch, vel])
             time.sleep(sound_dur)
             self._midi_out.send_message([0x80 | ch, pitch, 0])
             time.sleep(silence_dur)

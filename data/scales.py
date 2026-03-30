@@ -75,6 +75,34 @@ def chord_root(chord_idx: int) -> int:
     return chord_idx // N_QUALITIES
 
 
+def chord_tones(chord_idx: int) -> frozenset:
+    """
+    Return the key chord tones (root, 3rd, 7th) as pitch classes (0–11).
+
+    These are the harmonically important tones for voice-leading endpoint bias:
+    the generator is nudged toward landing on them at phrase cadences.
+
+      Major   → root, maj3 (+4), maj7 (+11)
+      Dominant→ root, maj3 (+4), min7 (+10)
+      Minor   → root, min3 (+3), min7 (+10)
+      Diminished→ root, min3 (+3), dim7 (+9)
+
+    Returns frozenset() for NC_INDEX (no harmonic constraint).
+    """
+    from data.chords import NC_INDEX, N_QUALITIES
+    if chord_idx == NC_INDEX:
+        return frozenset()
+    root    = chord_idx // N_QUALITIES
+    quality = chord_idx % N_QUALITIES
+    intervals = {
+        QUAL_MAJOR: (0, 4, 11),
+        QUAL_DOM:   (0, 4, 10),
+        QUAL_MINOR: (0, 3, 10),
+        QUAL_DIM:   (0, 3,  9),
+    }.get(quality, (0, 4, 7))
+    return frozenset((root + i) % 12 for i in intervals)
+
+
 def tritone_sub(chord_idx: int) -> int:
     """
     Return the tritone substitution of a chord index.

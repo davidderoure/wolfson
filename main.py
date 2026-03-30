@@ -30,7 +30,7 @@ from collections import Counter, deque
 
 from input.midi_listener    import MidiListener
 from input.phrase_detector  import PhraseDetector
-from input.phrase_analyzer  import analyze
+from input.phrase_analyzer  import analyze, extract_interval_motifs
 from input.beat_estimator   import BeatEstimator
 from memory.phrase_memory   import PhraseMemory
 from generator.phrase_generator import PhraseGenerator
@@ -73,6 +73,7 @@ class _PhraseStats:
         self._scale   = deque(maxlen=window)
         self._contour = deque(maxlen=window)
         self._stage   = deque(maxlen=window)
+        self._arc     = deque(maxlen=window)
 
     def record(self, params: dict):
         self._total += 1
@@ -80,6 +81,7 @@ class _PhraseStats:
         self._scale.append(params.get("scale_source",  "arc"))
         self._contour.append(params.get("contour_target", "?"))
         self._stage.append(params.get("stage", "?"))
+        self._arc.append(params.get("phrase_energy_arc", "flat"))
 
     def should_print(self) -> bool:
         return self._total > 0 and self._total % STATS_EVERY == 0
@@ -97,6 +99,7 @@ class _PhraseStats:
         print(header.ljust(width, "─"))
         print(f"  harm    {fmt(self._harm)}")
         print(f"  scale   {fmt(self._scale)}")
+        print(f"  arc     {fmt(self._arc)}")
         print(f"  contour {fmt(self._contour)}")
         print(f"  stage   {fmt(self._stage)}")
         print("─" * width)
@@ -156,7 +159,8 @@ def main():
     # ------------------------------------------------------------------
 
     def on_bass_phrase(phrase: list[dict]):
-        memory.store(phrase, source="bass")
+        motifs = extract_interval_motifs(phrase)
+        memory.store(phrase, source="bass", motifs=motifs)
         params = arc.on_bass_phrase(phrase)
         _respond(params, triggered_by="bass")
 
@@ -183,6 +187,9 @@ def main():
                 chord_idx           = params["chord_idx"],
                 swing_bias          = params.get("swing_bias", 0.0),
                 scale_pitch_classes = params.get("scale_pitch_classes"),
+                phrase_energy_arc   = params.get("phrase_energy_arc", "flat"),
+                motif_targets       = params.get("motif_targets", []),
+                motif_strength      = params.get("motif_strength", 0.0),
             )
             if not notes:
                 # Model generated nothing (END_TOKEN sampled immediately).
@@ -202,12 +209,9 @@ def main():
             durations_sec = [n["duration_beats"] * beat_dur_sec for n in notes]
 
             # Build a properly-timed sax phrase for memory storage.
-            # onset/offset are in seconds; beat_dur_sec is stored per note so
-            # phrase_to_tokens can decode durations correctly at any tempo.
-            # (Previously all onsets were 0, making every note appear simultaneous
-            # and doubling durations when the phrase was later used as a seed.)
             _t = 0.0
             sax_phrase = []
+            base_vel   = params.get("velocity", 80)
             for n in notes:
                 dur_sec = n["duration_beats"] * beat_dur_sec
                 sax_phrase.append({
@@ -218,7 +222,8 @@ def main():
                     "beat_dur_sec": beat_dur_sec,
                 })
                 _t += dur_sec
-            memory.store(sax_phrase, source="sax")
+            sax_motifs = extract_interval_motifs(notes)
+            memory.store(sax_phrase, source="sax", motifs=sax_motifs)
 
             # Update displays and send OSC before playback so receivers
             # can react in sync with the first note.
@@ -232,10 +237,15 @@ def main():
                 osc_out.send_phrase(params, notes, beats.bpm,
                                     arc.elapsed(), triggered_by)
 
+            # Per-note velocities from energy arc (velocity_scale 0.75–1.25)
+            per_note_vel = [
+                max(40, min(110, int(base_vel * n.get("velocity_scale", 1.0))))
+                for n in notes
+            ]
             midi_out.play_phrase(
                 pitches   = [n["pitch"] for n in notes],
                 durations = durations_sec,
-                velocity  = params.get("velocity", 80),
+                velocity  = per_note_vel,
             )
 
             notes_out = notes   # capture after successful play
@@ -383,11 +393,14 @@ def _log(params: dict, triggered_by: str, notes: list, bpm: float):
     contour = params.get("contour_target", "?")
     harm    = params.get("harmonic_mode", "?")
     src     = params.get("scale_source", "arc")
+    arc     = params.get("phrase_energy_arc", "flat")
+    motifs  = len(params.get("motif_targets", []))
     vel     = params.get("velocity", 80)
     print(
         f"[{stage:>14s}]  {bpm:5.1f} bpm  lead={lead:<3s}  "
         f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
-        f"harm={harm:<12s}  scale={src:<5s}  contour={contour:<10s}  vel={vel:3d}  n={len(notes)}"
+        f"harm={harm:<12s}  scale={src:<5s}  arc={arc:<9s}  "
+        f"motifs={motifs}  contour={contour:<10s}  vel={vel:3d}  n={len(notes)}"
     )
 
 

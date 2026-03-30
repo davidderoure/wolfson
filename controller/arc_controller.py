@@ -13,7 +13,7 @@ import time
 
 from config import ARC
 from data.chords import NC_INDEX
-from input.phrase_analyzer import analyze, complement_contour
+from input.phrase_analyzer import analyze, complement_contour, complement_energy_arc
 from memory.phrase_memory import PhraseMemory
 from controller.harmony import HarmonyController, stage_to_harmonic_mode
 
@@ -198,6 +198,7 @@ class ArcController:
         # Advance harmony and get chord token + scale pitch classes
         chord_idx, scale_pcs = self._harmony.next_chord()
 
+
         # ------------------------------------------------------------------
         # Bass pitch-class tracking: steer the sax toward the tonality the
         # bassist is actually implying, rather than following the arc's
@@ -220,6 +221,24 @@ class ArcController:
             scale_source = "blend"
         else:
             scale_source = "arc"           # arc harmony only
+
+        # ------------------------------------------------------------------
+        # Energy arc — internal phrase shaping
+        # Complement the bass phrase's energy profile; override at key stages
+        # (resolution always winds down; peak always arches).
+        # ------------------------------------------------------------------
+        phrase_energy_arc = complement_energy_arc(features)
+        stage_arc_override = {"resolution": "ramp_down", "peak": "arch"}.get(stage)
+        if stage_arc_override:
+            phrase_energy_arc = stage_arc_override
+
+        # ------------------------------------------------------------------
+        # Motivic development — find recurring interval patterns in memory
+        # Only use motifs seen at least twice; strength scales with stage.
+        # ------------------------------------------------------------------
+        motif_counter  = self.memory.recall_motifs(source=None, n_recent=16)
+        motif_targets  = [m for m, cnt in motif_counter.most_common(2) if cnt >= 2]
+        motif_strength = _stage_motif_strength(stage)
 
         contour_target = complement_contour(features)
 
@@ -266,6 +285,9 @@ class ArcController:
             "leadership":          self._leadership,
             "harmonic_mode":       self._harmony.current_mode_name(),
             "scale_source":        scale_source,
+            "phrase_energy_arc":   phrase_energy_arc,
+            "motif_targets":       motif_targets,
+            "motif_strength":      motif_strength,
         }
 
 
@@ -343,6 +365,23 @@ def _compute_velocity(features: dict, stage: str) -> int:
     }.get(stage, 1.0)
 
     return max(40, min(110, int(base * stage_scale)))
+
+
+def _stage_motif_strength(stage: str) -> float:
+    """
+    How strongly to bias toward recognised interval motifs at each stage.
+
+    Zero in the sparse stage (not enough material yet).
+    Grows through building and peak.
+    Strongest in recapitulation — where thematic return is most meaningful.
+    """
+    return {
+        "sparse":          0.0,
+        "building":        0.3,
+        "peak":            0.6,
+        "recapitulation":  0.8,
+        "resolution":      0.4,
+    }.get(stage, 0.0)
 
 
 def _should_recall(stage: str, memory: PhraseMemory) -> bool:

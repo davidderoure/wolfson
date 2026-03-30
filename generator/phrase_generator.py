@@ -1,15 +1,30 @@
 """
 Generates sax response phrases using the LSTM model.
 
-Key additions over the basic generator:
-  - Chord conditioning: passes chord_idx at each timestep
-  - Contour steering: soft bias on pitch logits in the final portion of a phrase
-    to guide the phrase toward a target contour (ascending / descending / neutral)
-  - Swing/triplet bias: soft bias on duration logits toward the 12/8 triplet grid
-    (1/3, 2/3, 4/3, 2 beats), enabling rhythmic contrast when the bass plays
-    straight quarter notes — a 4-to-the-bar call gets a triplet-feel response
-  - Scale pitch bias: soft logit bias toward pitch tokens that belong to the
-    current chord/mode's scale, supplied as a frozenset[int] of pitch classes
+Bias layers (applied as logit additions during sampling):
+  - Chord conditioning     : chord_idx passed at every timestep
+  - Pitch range            : soft penalty outside E3–E6 sax register
+  - Scale pitch bias       : positive bias for in-scale pitch classes
+  - Contour steering       : distance-from-mean push toward ascending/descending
+  - Swing/triplet bias     : positive bias on 12/8 triplet-grid duration tokens
+  - Energy arc             : position-dependent pitch + duration shaping
+      'arch'     — rise to midpoint, fall to end
+      'ramp_up'  — ascending energy throughout
+      'ramp_down'— descending energy throughout
+      'spike'    — sharp burst peaking at ~30% through
+      'flat'     — no arc (default)
+  - Motivic development    : bias toward continuing recognised interval patterns
+  - Voice leading          : chord-tone targeting at phrase end + stepwise preference
+
+Bias budget
+-----------
+Biases are calibrated so their combined effect at any step stays musical:
+  contour         max ~2.5 logits (1.5 when energy arc active)
+  energy arc      max ~1.5 logits pitch + 0.8 dur
+  voice leading   max ~1.0 logits (grows with arc_position)
+  motif           2.0 logits on one specific token (sparse, fires rarely)
+  scale           2.0 logits (flat on all in-scale tokens)
+  stepwise        0.4 logits on ±1–2 semitone tokens
 """
 
 import sys
@@ -23,38 +38,49 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from data.encoding import (
     phrase_to_tokens, phrase_to_chord_sequence, tokens_to_phrase,
     END_TOKEN, VOCAB_SIZE, DUR_OFFSET, N_PITCHES, N_DUR_BUCKETS,
-    dur_to_token,
+    dur_to_token, token_to_pitch, pitch_to_token,
 )
 from data.chords import NC_INDEX, CHORD_VOCAB_SIZE
+from data.scales import chord_tones
 from generator.lstm_model import PhraseModel
 from config import MAX_GENERATED_NOTES, GENERATION_TEMPERATURE, DEFAULT_INSTRUMENT
 
 MODELS_DIR = Path(__file__).parent.parent / "models"
 
-# Contour steering — applied from note 0 so the whole phrase arcs,
-# not just the tail.  Seed mean pitch is used as the reference for the
-# first generated note so the sax starts in the right register.
-CONTOUR_STEER_ONSET   = 0.0   # fraction of phrase before steering kicks in (0 = always)
-CONTOUR_BIAS_STRENGTH = 2.5   # logit bias strength
+# ---------------------------------------------------------------------------
+# Bias strength constants
+# ---------------------------------------------------------------------------
 
-# Swing/triplet bias
-# Triplet grid in beat-relative durations: 1/3, 2/3, 1, 4/3, 2 beats
-# These are the canonical durations of the 12/8 subdivision.
-TRIPLET_DUR_BEATS = [1/3, 2/3, 1.0, 4/3, 2.0]
-SWING_BIAS_STRENGTH = 1.2   # logit bias added to triplet-grid duration tokens
+# Contour steering — full strength when no energy arc, reduced when arc active
+CONTOUR_STEER_ONSET            = 0.0
+CONTOUR_BIAS_STRENGTH          = 2.5
+CONTOUR_BIAS_STRENGTH_WITH_ARC = 1.5   # reduced to share budget with energy arc
+
+# Swing / triplet bias
+TRIPLET_DUR_BEATS   = [1/3, 2/3, 1.0, 4/3, 2.0]
+SWING_BIAS_STRENGTH = 1.2
 
 # Scale pitch bias
-SCALE_BIAS_STRENGTH = 2.0   # logit bias for in-scale pitch tokens (raised for clearer colour)
+SCALE_BIAS_STRENGTH = 2.0
 
-# Minimum duration floor — prevents imperceptibly short notes
-MIN_DURATION_BEATS = 0.2    # ~100 ms at 120 BPM
+# Pitch range soft limits
+PITCH_RANGE_MIN      = 52    # E3
+PITCH_RANGE_MAX      = 88    # E6
+PITCH_RANGE_STRENGTH = 2.0   # logit penalty per semitone outside range
 
-# Pitch range soft limits — strong negative logit bias outside these bounds
-# keeps the generated line in a realistic sax register regardless of where
-# the bass phrase ended.
-PITCH_RANGE_MIN      = 52   # E3 — lower practical limit
-PITCH_RANGE_MAX      = 88   # E6 — upper practical limit
-PITCH_RANGE_STRENGTH = 2.0  # logit penalty per semitone outside range
+# Minimum duration floor
+MIN_DURATION_BEATS = 0.2     # ~100 ms at 120 BPM
+
+# Energy arc — internal phrase shaping
+ENERGY_PITCH_STRENGTH = 1.5  # max pitch logit bias from arc
+ENERGY_DUR_STRENGTH   = 0.8  # max duration logit bias from arc
+
+# Motivic development
+MOTIF_BIAS_STRENGTH   = 2.0  # logit bias for motif-continuation pitch token
+
+# Voice leading
+VOICE_LEADING_STRENGTH = 1.0  # max chord-tone boost (scales with arc_position)
+STEPWISE_BIAS_STRENGTH = 0.4  # gentle bias toward ±1–2 semitone motion
 
 
 class PhraseGenerator:
@@ -77,42 +103,47 @@ class PhraseGenerator:
 
     def generate(
         self,
-        seed_phrase:        list[dict],
-        tempo_bpm:          float         = 120.0,
-        n_notes:            int           = None,
-        temperature:        float         = None,
-        contour_target:     str           = "neutral",   # 'ascending', 'descending', 'neutral'
-        chord_idx:          int           = NC_INDEX,
-        swing_bias:         float         = 0.0,         # 0 = no bias, 1 = full triplet-grid bias
-        scale_pitch_classes: frozenset    = None,        # pitch classes (0–11) for scale bias
+        seed_phrase:         list[dict],
+        tempo_bpm:           float      = 120.0,
+        n_notes:             int        = None,
+        temperature:         float      = None,
+        contour_target:      str        = "neutral",
+        chord_idx:           int        = NC_INDEX,
+        swing_bias:          float      = 0.0,
+        scale_pitch_classes: frozenset  = None,
+        phrase_energy_arc:   str        = "flat",
+        motif_targets:       list       = None,
+        motif_strength:      float      = 0.0,
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
 
-        seed_phrase:         list of note dicts (pitch, onset, offset, [beat_dur_sec], [chord_idx])
-        tempo_bpm:           used only as fallback if notes lack beat_dur_sec
-        contour_target:      steer the ending of the phrase toward rising or falling pitch
-        chord_idx:           current chord (NC_INDEX if unknown)
-        swing_bias:          0–1, strength of triplet-grid duration bias.
-                             Set to 1.0 when bass plays straight 4-to-bar to get a
-                             swung/triplet response; 0.0 for no rhythmic steering.
-        scale_pitch_classes: frozenset of pitch classes (0–11) from the current mode/chord.
-                             Pitch tokens whose PC is in this set get a positive logit bias.
-                             Pass None (or omit) to disable scale bias (chromatic).
+        seed_phrase         list of note dicts (pitch, onset, offset, [beat_dur_sec])
+        tempo_bpm           fallback tempo if notes lack beat_dur_sec
+        contour_target      'ascending' | 'descending' | 'neutral'
+        chord_idx           current chord token (NC_INDEX if unknown)
+        swing_bias          0–1 strength of triplet-grid duration bias
+        scale_pitch_classes frozenset of pitch classes (0–11) for scale bias
+        phrase_energy_arc   internal energy shape: 'arch'|'ramp_up'|'ramp_down'|
+                            'spike'|'flat'
+        motif_targets       list of interval tuples to lean toward, e.g. [(2,-1,5)]
+        motif_strength      0–1 scale on MOTIF_BIAS_STRENGTH
 
-        Returns: list of {pitch, duration_beats} dicts
+        Returns list of {pitch, duration_beats, velocity_scale} dicts.
+        velocity_scale is 0.75–1.25; apply to base phrase velocity in the caller.
         """
-        n_notes     = n_notes     or MAX_GENERATED_NOTES
-        temperature = temperature or GENERATION_TEMPERATURE
+        n_notes       = n_notes     or MAX_GENERATED_NOTES
+        temperature   = temperature or GENERATION_TEMPERATURE
+        motif_targets = motif_targets or []
+        arc_active    = phrase_energy_arc != "flat"
 
-        # Seed mean pitch — used as contour reference for the first generated note
+        # Seed mean pitch — contour reference for the first generated note
         seed_pitches    = [n["pitch"] for n in seed_phrase if "pitch" in n]
         seed_mean_pitch = sum(seed_pitches) / len(seed_pitches) if seed_pitches else 69.0
 
         seed_tokens = phrase_to_tokens(seed_phrase, tempo_bpm)
         seed_chords = phrase_to_chord_sequence(seed_phrase)
 
-        # Override seed chord indices with the current chord if provided
         if chord_idx != NC_INDEX:
             seed_chords = [chord_idx] * len(seed_chords)
 
@@ -120,10 +151,16 @@ class PhraseGenerator:
         chord_tensor = torch.tensor([seed_chords], dtype=torch.long)
 
         generated_tokens = []
-        hidden = None
+        hidden           = None
+        last_pitch_token = -1   # most recent generated pitch token; -1 = none yet
+
+        # Reduce contour strength when energy arc is also active (shared budget)
+        contour_strength = (
+            CONTOUR_BIAS_STRENGTH_WITH_ARC if arc_active else CONTOUR_BIAS_STRENGTH
+        )
 
         with torch.no_grad():
-            # Prime hidden state with full seed
+            # Prime the hidden state with the full seed sequence
             logits, hidden = self.model(tok_tensor, chord_tensor, hidden)
 
             last_tok   = torch.tensor([[seed_tokens[-1]]], dtype=torch.long)
@@ -135,26 +172,56 @@ class PhraseGenerator:
                 logits, hidden = self.model(last_tok, last_chord, hidden)
                 tok_logits = logits[0, -1, :] / temperature
 
-                # Enforce pitch/duration alternation
+                # Hard alternation mask: force PITCH → DUR → PITCH → …
                 tok_logits = tok_logits + _alternation_mask(expecting)
 
+                # Arc position: 0.0 at first note, 1.0 at last
+                arc_position = note_count / max(n_notes, 1)
+
                 if expecting == "pitch":
-                    # Soft pitch-range limits — penalise notes outside sax register
+                    # Pitch-range soft limits (precomputed)
                     tok_logits = tok_logits + _PITCH_RANGE_BIAS
 
-                    # Scale pitch bias
+                    # Scale / mode bias
                     if scale_pitch_classes:
                         tok_logits = _apply_scale_bias(tok_logits, scale_pitch_classes)
 
-                    # Contour steering — applied throughout (CONTOUR_STEER_ONSET=0.0)
+                    # Contour steering (from note 0)
                     if note_count >= int(n_notes * CONTOUR_STEER_ONSET):
                         tok_logits = _apply_contour_bias(
-                            tok_logits, generated_tokens, contour_target, seed_mean_pitch
+                            tok_logits, generated_tokens, contour_target,
+                            seed_mean_pitch, contour_strength,
                         )
 
-                    # Swing/triplet bias: applied to duration tokens throughout
-                if expecting == "duration" and swing_bias > 0.0:
-                    tok_logits = _apply_swing_bias(tok_logits, swing_bias)
+                    # Energy arc — position-dependent pitch push
+                    if arc_active:
+                        tok_logits = _apply_energy_pitch_bias(
+                            tok_logits, arc_position, phrase_energy_arc,
+                            seed_mean_pitch,
+                        )
+
+                    # Motivic development — continue recognised interval patterns
+                    if motif_targets and motif_strength > 0.0:
+                        tok_logits = _apply_motif_bias(
+                            tok_logits, generated_tokens,
+                            motif_targets, motif_strength,
+                        )
+
+                    # Voice leading — chord-tone endpoint bias + stepwise preference
+                    tok_logits = _apply_voice_leading_bias(
+                        tok_logits, arc_position, chord_idx, last_pitch_token,
+                    )
+
+                elif expecting == "duration":
+                    # Triplet/swing bias
+                    if swing_bias > 0.0:
+                        tok_logits = _apply_swing_bias(tok_logits, swing_bias)
+
+                    # Energy arc — position-dependent duration push
+                    if arc_active:
+                        tok_logits = _apply_energy_dur_bias(
+                            tok_logits, arc_position, phrase_energy_arc,
+                        )
 
                 probs = F.softmax(tok_logits, dim=-1)
                 token = torch.multinomial(probs, 1).item()
@@ -163,32 +230,39 @@ class PhraseGenerator:
                     break
 
                 generated_tokens.append(token)
-                last_tok   = torch.tensor([[token]],      dtype=torch.long)
+                last_tok   = torch.tensor([[token]],     dtype=torch.long)
                 last_chord = torch.tensor([[chord_idx]], dtype=torch.long)
 
                 if expecting == "pitch":
+                    last_pitch_token = token
                     note_count += 1
                     expecting = "duration"
                 else:
                     expecting = "pitch"
 
         notes = tokens_to_phrase(generated_tokens)
-        # Enforce minimum duration — prevents imperceptibly short notes
-        for n in notes:
-            n["duration_beats"] = max(n["duration_beats"], MIN_DURATION_BEATS)
+        n = len(notes)
+
+        for i, note in enumerate(notes):
+            # Minimum duration floor
+            note["duration_beats"] = max(note["duration_beats"], MIN_DURATION_BEATS)
+
+            # Per-note velocity scale from energy arc (0.75 quiet → 1.25 loud)
+            if arc_active and n > 0:
+                pos      = i / max(n - 1, 1)
+                activity = _energy_activity_level(pos, phrase_energy_arc)
+                note["velocity_scale"] = 0.75 + 0.5 * activity
+            else:
+                note["velocity_scale"] = 1.0
+
         return notes
 
 
 # ---------------------------------------------------------------------------
-# Precompute triplet-grid duration token set
+# Precomputed tensors
 # ---------------------------------------------------------------------------
 
-def _build_triplet_token_set() -> set[int]:
-    """
-    Return the set of duration token indices that correspond to the triplet
-    grid. We map each canonical triplet duration to its nearest bucket token,
-    then also include the immediately adjacent buckets for robustness.
-    """
+def _build_triplet_token_set() -> set:
     tokens = set()
     for dur_beats in TRIPLET_DUR_BEATS:
         t = dur_to_token(dur_beats)
@@ -199,88 +273,10 @@ def _build_triplet_token_set() -> set[int]:
             tokens.add(t + 1)
     return tokens
 
-_TRIPLET_TOKENS: set[int] = _build_triplet_token_set()
-
-
-# ---------------------------------------------------------------------------
-# Sampling helpers
-# ---------------------------------------------------------------------------
-
-def _alternation_mask(expecting: str) -> torch.Tensor:
-    """
-    -inf mask for tokens of the wrong type.
-    Enforces strict PITCH → DUR → PITCH → … alternation.
-    """
-    mask = torch.full((VOCAB_SIZE,), float("-inf"))
-    if expecting == "pitch":
-        mask[:N_PITCHES] = 0.0
-        mask[END_TOKEN]  = 0.0
-    else:
-        mask[DUR_OFFSET:END_TOKEN] = 0.0
-    return mask
-
-
-def _apply_contour_bias(
-    logits: torch.Tensor,
-    generated_so_far: list[int],
-    target: str,
-    seed_mean_pitch: float = 69.0,
-) -> torch.Tensor:
-    """
-    Add a soft bias to pitch token logits to steer the phrase contour.
-
-    'descending' → bias toward lower pitches (answer phrase / resolution)
-    'ascending'  → bias toward higher pitches (question phrase / tension)
-    'neutral'    → no bias
-
-    Reference pitch: mean of already-generated notes if available, otherwise
-    the seed phrase mean — so from note 0 the sax starts in the right register.
-    Bias is proportional to distance from the reference, nudging without forcing.
-    """
-    if target == "neutral":
-        return logits
-
-    pitch_tokens = [t for t in generated_so_far if t < N_PITCHES]
-    if pitch_tokens:
-        mean_pitch_token = sum(pitch_tokens) / len(pitch_tokens)
-    else:
-        # First note: use seed phrase mean as reference
-        from data.encoding import PITCH_MIN
-        mean_pitch_token = seed_mean_pitch - PITCH_MIN
-
-    bias = torch.zeros(VOCAB_SIZE)
-    for i in range(N_PITCHES):
-        distance = i - mean_pitch_token
-        if target == "descending":
-            bias[i] = -distance * (CONTOUR_BIAS_STRENGTH / N_PITCHES)
-        else:  # ascending
-            bias[i] = distance * (CONTOUR_BIAS_STRENGTH / N_PITCHES)
-
-    return logits + bias
-
-
-def _apply_swing_bias(logits: torch.Tensor, strength: float) -> torch.Tensor:
-    """
-    Add a positive bias to duration tokens that fall on the triplet (12/8) grid.
-
-    strength 0.0 → no bias
-    strength 1.0 → SWING_BIAS_STRENGTH added to triplet-grid tokens
-
-    This nudges the model toward swung/triplet durations without forcing them —
-    the LSTM's learned distribution still dominates.
-    """
-    bias = torch.zeros(VOCAB_SIZE)
-    for t in _TRIPLET_TOKENS:
-        bias[t] = SWING_BIAS_STRENGTH * strength
-    return logits + bias
+_TRIPLET_TOKENS: set = _build_triplet_token_set()
 
 
 def _apply_pitch_range_bias() -> torch.Tensor:
-    """
-    Apply a soft logit penalty to pitch tokens outside the practical sax register.
-    Penalty grows linearly with distance beyond the limit, making extreme pitches
-    progressively less likely without hard-clamping them.
-    """
     from data.encoding import PITCH_MIN
     bias = torch.zeros(VOCAB_SIZE)
     for tok in range(N_PITCHES):
@@ -291,31 +287,263 @@ def _apply_pitch_range_bias() -> torch.Tensor:
             bias[tok] = -(pitch - PITCH_RANGE_MAX) * PITCH_RANGE_STRENGTH
     return bias
 
-_PITCH_RANGE_BIAS: torch.Tensor = _apply_pitch_range_bias()   # precomputed once
+_PITCH_RANGE_BIAS: torch.Tensor = _apply_pitch_range_bias()
+
+# Duration split: tokens below this index are "short" (< ~0.5 beats)
+_ENERGY_DUR_SPLIT: int = dur_to_token(0.5)
+
+
+# ---------------------------------------------------------------------------
+# Bias helpers — existing
+# ---------------------------------------------------------------------------
+
+def _alternation_mask(expecting: str) -> torch.Tensor:
+    mask = torch.full((VOCAB_SIZE,), float("-inf"))
+    if expecting == "pitch":
+        mask[:N_PITCHES] = 0.0
+        mask[END_TOKEN]  = 0.0
+    else:
+        mask[DUR_OFFSET:END_TOKEN] = 0.0
+    return mask
+
+
+def _apply_contour_bias(
+    logits:           torch.Tensor,
+    generated_so_far: list,
+    target:           str,
+    seed_mean_pitch:  float = 69.0,
+    strength:         float = CONTOUR_BIAS_STRENGTH,
+) -> torch.Tensor:
+    """
+    Soft bias toward higher or lower pitches depending on target contour.
+    Reference is the running mean of generated pitches, falling back to the
+    seed mean so the first note starts in the right register.
+    """
+    if target == "neutral":
+        return logits
+
+    pitch_tokens = [t for t in generated_so_far if t < N_PITCHES]
+    if pitch_tokens:
+        mean_pitch_token = sum(pitch_tokens) / len(pitch_tokens)
+    else:
+        from data.encoding import PITCH_MIN
+        mean_pitch_token = seed_mean_pitch - PITCH_MIN
+
+    bias = torch.zeros(VOCAB_SIZE)
+    for i in range(N_PITCHES):
+        distance = i - mean_pitch_token
+        if target == "descending":
+            bias[i] = -distance * (strength / N_PITCHES)
+        else:   # ascending / answer / question
+            bias[i] = distance * (strength / N_PITCHES)
+
+    return logits + bias
+
+
+def _apply_swing_bias(logits: torch.Tensor, strength: float) -> torch.Tensor:
+    bias = torch.zeros(VOCAB_SIZE)
+    for t in _TRIPLET_TOKENS:
+        bias[t] = SWING_BIAS_STRENGTH * strength
+    return logits + bias
 
 
 def _apply_scale_bias(
-    logits: torch.Tensor,
+    logits:        torch.Tensor,
     pitch_classes: frozenset,
 ) -> torch.Tensor:
-    """
-    Add SCALE_BIAS_STRENGTH to pitch tokens whose pitch class belongs to the
-    current scale / mode.
-
-    Non-scale tones are not penalised (bias stays 0), so chromatic passing notes
-    remain possible — the bias nudges toward scale tones without eliminating
-    chromaticism.  The LSTM's learned jazz vocabulary still governs the overall
-    choice; this is a gentle harmonic steer, not a hard constraint.
-
-    pitch_classes: frozenset of ints in 0–11 (from data.scales.scale_pitch_classes)
-    """
     if not pitch_classes:
         return logits
+    from data.encoding import PITCH_MIN
     bias = torch.zeros(VOCAB_SIZE)
     for tok in range(N_PITCHES):
-        # tok is a pitch token; the actual MIDI pitch is PITCH_MIN + tok
-        from data.encoding import PITCH_MIN
-        pc = (PITCH_MIN + tok) % 12
-        if pc in pitch_classes:
+        if (PITCH_MIN + tok) % 12 in pitch_classes:
             bias[tok] = SCALE_BIAS_STRENGTH
+    return logits + bias
+
+
+# ---------------------------------------------------------------------------
+# Bias helpers — energy arc
+# ---------------------------------------------------------------------------
+
+def _energy_pitch_signal(arc_position: float, arc_shape: str) -> float:
+    """
+    Signed directional signal for the energy arc pitch bias.
+    +1.0 = bias upward, -1.0 = bias downward, 0.0 = neutral.
+    """
+    if arc_shape == "ramp_up":
+        return arc_position
+    if arc_shape == "ramp_down":
+        return -(1.0 - arc_position)
+    if arc_shape == "arch":
+        # +1 at start → 0 at midpoint → -1 at end
+        return (0.5 - arc_position) * 2.0
+    if arc_shape == "spike":
+        # upward burst peaking at 0.3, then fall
+        return max(-1.0, (0.3 - arc_position) * 3.0)
+    return 0.0
+
+
+def _energy_activity_level(arc_position: float, arc_shape: str) -> float:
+    """
+    Scalar activity level 0.0–1.0.
+    High = shorter notes, louder; low = longer notes, quieter.
+    """
+    if arc_shape == "flat":
+        return 0.0
+    if arc_shape == "ramp_up":
+        return arc_position
+    if arc_shape == "ramp_down":
+        return 1.0 - arc_position
+    if arc_shape == "arch":
+        return 1.0 - abs(2.0 * arc_position - 1.0)
+    if arc_shape == "spike":
+        return max(0.0, 1.0 - abs(arc_position - 0.3) * 4.0)
+    return 0.0
+
+
+def _apply_energy_pitch_bias(
+    logits:          torch.Tensor,
+    arc_position:    float,
+    arc_shape:       str,
+    seed_mean_pitch: float,
+) -> torch.Tensor:
+    """
+    Position-dependent pitch push based on energy arc shape.
+    Uses the same distance-from-mean approach as contour bias.
+    """
+    signal = _energy_pitch_signal(arc_position, arc_shape)
+    if signal == 0.0:
+        return logits
+
+    from data.encoding import PITCH_MIN
+    mean_tok = seed_mean_pitch - PITCH_MIN
+    bias = torch.zeros(VOCAB_SIZE)
+    for i in range(N_PITCHES):
+        distance = i - mean_tok
+        bias[i]  = distance * signal * (ENERGY_PITCH_STRENGTH / N_PITCHES)
+
+    return logits + bias
+
+
+def _apply_energy_dur_bias(
+    logits:       torch.Tensor,
+    arc_position: float,
+    arc_shape:    str,
+) -> torch.Tensor:
+    """
+    Position-dependent duration push: high activity → shorter notes.
+    Short tokens (< ~0.5 beats) are boosted; long tokens are gently penalised.
+    """
+    activity = _energy_activity_level(arc_position, arc_shape)
+    if activity == 0.0:
+        return logits
+
+    bias  = torch.zeros(VOCAB_SIZE)
+    split = _ENERGY_DUR_SPLIT
+
+    for tok in range(DUR_OFFSET, END_TOKEN):
+        if tok < split:
+            bias[tok] =  ENERGY_DUR_STRENGTH * activity          # short: boost
+        else:
+            bias[tok] = -ENERGY_DUR_STRENGTH * activity * 0.5    # long: gentle pull
+
+    return logits + bias
+
+
+# ---------------------------------------------------------------------------
+# Bias helpers — motivic development
+# ---------------------------------------------------------------------------
+
+def _apply_motif_bias(
+    logits:           torch.Tensor,
+    generated_tokens: list,
+    motif_targets:    list,
+    strength:         float,
+) -> torch.Tensor:
+    """
+    Bias toward the next pitch that would continue a recognised interval motif.
+
+    For each motif in motif_targets (a list of signed-semitone interval tuples),
+    check whether the most recently generated pitches match a prefix of the motif.
+    If so, add MOTIF_BIAS_STRENGTH * strength to the token that would complete the
+    next step.
+
+    Only the longest matching prefix fires, preventing double-counting.
+    """
+    pitch_toks = [t for t in generated_tokens if t < N_PITCHES]
+    if not pitch_toks:
+        return logits
+
+    bias = torch.zeros(VOCAB_SIZE)
+
+    for motif in motif_targets:
+        motif_len = len(motif)   # number of intervals = number of notes - 1
+        max_check = min(motif_len - 1, len(pitch_toks))
+
+        for prefix_len in range(max_check, 0, -1):
+            # We need prefix_len+1 recent pitches to compute prefix_len intervals
+            recent = pitch_toks[-(prefix_len + 1):]
+            if len(recent) < prefix_len + 1:
+                continue
+
+            recent_intervals = tuple(
+                token_to_pitch(recent[i + 1]) - token_to_pitch(recent[i])
+                for i in range(prefix_len)
+            )
+
+            if recent_intervals == motif[:prefix_len]:
+                next_interval = motif[prefix_len]
+                last_pitch    = token_to_pitch(pitch_toks[-1])
+                target_pitch  = last_pitch + next_interval
+                target_tok    = pitch_to_token(target_pitch)
+
+                if 0 <= target_tok < N_PITCHES:
+                    bias[target_tok] += MOTIF_BIAS_STRENGTH * strength
+
+                break   # longest prefix only
+
+    return logits + bias
+
+
+# ---------------------------------------------------------------------------
+# Bias helpers — voice leading
+# ---------------------------------------------------------------------------
+
+def _apply_voice_leading_bias(
+    logits:           torch.Tensor,
+    arc_position:     float,
+    chord_idx:        int,
+    last_pitch_token: int,
+) -> torch.Tensor:
+    """
+    Two complementary voice-leading nudges:
+
+    1. Chord-tone targeting — grows linearly with arc_position so that by the
+       end of the phrase the sax is being pushed toward root, 3rd, and 7th.
+       No effect at the start (arc_position=0) so melodic freedom is preserved
+       through the phrase body.
+
+    2. Stepwise motion preference — a small constant bias toward pitches ±1 or
+       ±2 semitones from the last generated pitch, encouraging smooth contrary
+       motion rather than large leaps. Active throughout once a pitch exists.
+    """
+    from data.encoding import PITCH_MIN
+
+    bias  = torch.zeros(VOCAB_SIZE)
+    tones = chord_tones(chord_idx)
+
+    # 1. Chord-tone endpoint targeting
+    if tones and arc_position > 0:
+        ct_strength = VOICE_LEADING_STRENGTH * arc_position
+        for tok in range(N_PITCHES):
+            if (PITCH_MIN + tok) % 12 in tones:
+                bias[tok] += ct_strength
+
+    # 2. Stepwise motion preference
+    if last_pitch_token >= 0:
+        for tok in range(N_PITCHES):
+            interval = abs(tok - last_pitch_token)
+            if interval <= 2:
+                bias[tok] += STEPWISE_BIAS_STRENGTH * (1.0 - interval / 3.0)
+
     return logits + bias

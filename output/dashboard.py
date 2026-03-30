@@ -76,6 +76,7 @@ class WolfsonDashboard:
 
         self._harm    = deque(maxlen=stats_window)
         self._scale   = deque(maxlen=stats_window)
+        self._arc     = deque(maxlen=stats_window)
         self._contour = deque(maxlen=stats_window)
 
     # -----------------------------------------------------------------------
@@ -110,6 +111,7 @@ class WolfsonDashboard:
 
         self._harm.append(params.get("harmonic_mode", "?"))
         self._scale.append(params.get("scale_source",  "arc"))
+        self._arc.append(params.get("phrase_energy_arc", "flat"))
         self._contour.append(params.get("contour_target", "?"))
 
         self._live.update(self._render())
@@ -251,6 +253,7 @@ class WolfsonDashboard:
 
         grid.add_row("harm",    fmt(self._harm))
         grid.add_row("scale",   fmt(self._scale))
+        grid.add_row("arc",     fmt(self._arc))
         grid.add_row("contour", fmt(self._contour))
 
         return Panel(grid, title=f"last {n} phrases", border_style="dim white")
