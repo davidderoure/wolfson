@@ -164,11 +164,11 @@ body.pulse{box-shadow:inset 0 0 0 2px var(--pulse-color,#00ffff)}
 .offline-msg.show{display:block}
 </style>
 </head>
-<body>
+<body style="background:#0a0a0a;color:#ffffff;font-family:'Courier New',Courier,monospace">
 
 <div class="hdr">
-  <span class="hdr-title">WOLFSON</span>
-  <span class="hdr-info" id="hdr-info">&mdash;</span>
+  <span class="hdr-title" style="color:#00ffff">WOLFSON</span>
+  <span class="hdr-info" id="hdr-info" style="color:#888">&mdash;</span>
 </div>
 
 <div class="arc-wrap">
@@ -379,6 +379,12 @@ class WebAudienceDisplay:
         @app.route("/")
         def index():
             return _HTML, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+        @app.route("/headers")
+        def show_headers():
+            from flask import request
+            lines = "\n".join(f"{k}: {v}" for k, v in sorted(request.headers))
+            return lines, 200, {"Content-Type": "text/plain; charset=utf-8"}
 
         @app.route("/stream")
         def stream():
