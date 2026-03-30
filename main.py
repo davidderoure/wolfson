@@ -33,7 +33,7 @@ from input.phrase_detector  import PhraseDetector
 from input.phrase_analyzer  import analyze, extract_interval_motifs, extract_lyrical_motifs
 from input.beat_estimator   import BeatEstimator
 from memory.phrase_memory   import PhraseMemory
-from generator.phrase_generator import PhraseGenerator
+from generator.phrase_generator import PhraseGenerator, MAX_PHRASE_BEATS
 from controller.arc_controller  import ArcController
 from output.midi_output     import MidiOutput
 from output.dashboard       import WolfsonDashboard
@@ -43,6 +43,7 @@ from config import (
     DASHBOARD_ENABLED, OSC_ENABLED, OSC_HOST, OSC_PORT,
     ARC, REST_PITCH,
     SELF_PLAY_CH_A, SELF_PLAY_CH_B,
+    TRADE_BEATS_MODE, TRADE_BEATS_MIN,
 )
 
 # Total arc duration in seconds (end of the last stage)
@@ -135,12 +136,18 @@ def main():
         "--osc-port", type=int, default=OSC_PORT,
         help=f"OSC UDP port (default: {OSC_PORT})",
     )
+    parser.add_argument(
+        "--trade", action="store_true", default=TRADE_BEATS_MODE,
+        help="Beat-matching mode: sax response matches the bass phrase length "
+             "in beats, enabling natural trading of 2s, 4s, or 8s.",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
     initial_bpm    = args.bpm
     use_dashboard  = args.dashboard
     osc_host       = args.osc_host    # None = OSC disabled
+    trade_mode     = args.trade
 
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
@@ -174,6 +181,12 @@ def main():
         motifs = extract_interval_motifs(phrase)
         memory.store(phrase, source="bass", motifs=motifs)
         params = arc.on_bass_phrase(phrase)
+        if trade_mode and len(phrase) >= 2:
+            # Measure the bass phrase in beats and cap the sax response to
+            # the same length — enabling natural trading of 2s, 4s, or 8s.
+            phrase_dur_sec   = phrase[-1]["offset"] - phrase[0]["onset"]
+            phrase_beats     = phrase_dur_sec / beats.beat_duration
+            params["max_phrase_beats"] = max(TRADE_BEATS_MIN, phrase_beats)
         _respond(params, triggered_by="bass")
 
     # ------------------------------------------------------------------
@@ -212,6 +225,7 @@ def main():
                 motif_strength      = params.get("motif_strength", 0.0),
                 modal_strength      = params.get("modal_strength", 0.0),
                 rhythmic_density    = params.get("rhythmic_density", 0.5),
+                max_phrase_beats    = params.get("max_phrase_beats", MAX_PHRASE_BEATS),
             )
             if not notes:
                 # Model generated nothing (END_TOKEN sampled immediately).
@@ -367,6 +381,9 @@ def main():
     if osc_out:
         print(f"OSC output → {osc_out}")
 
+    if trade_mode and not dashboard:
+        print(f"Beat-matching (--trade) enabled: sax phrases will match bass phrase length.")
+
     if self_play:
         # Seed the loop with an opening phrase in a background thread
         # so main() is not blocked before the KeyboardInterrupt handler.
@@ -437,12 +454,14 @@ def _log(params: dict, triggered_by: str, notes: list, bpm: float,
     vel     = params.get("velocity", 80)
     modal   = params.get("modal_strength", 0.0)
     density = params.get("rhythmic_density", 0.5)
+    mpb     = params.get("max_phrase_beats")
+    mpb_str = f"  cap={mpb:.1f}b" if mpb is not None else ""
     print(
         f"[{stage:>14s}]  {bpm:5.1f} bpm  ch={channel}  lead={lead:<3s}  "
         f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
         f"harm={harm:<12s}  scale={src:<5s}  arc={arc:<9s}  "
         f"motifs={motifs}  contour={contour:<10s}  vel={vel:3d}  "
-        f"modal={modal:.1f}  density={density:.1f}  n={len(notes)}"
+        f"modal={modal:.1f}  density={density:.1f}  n={len(notes)}{mpb_str}"
     )
 
 

@@ -178,6 +178,7 @@ class PhraseGenerator:
         motif_strength:      float      = 0.0,
         modal_strength:      float      = 0.0,
         rhythmic_density:    float      = 0.5,
+        max_phrase_beats:    float      = MAX_PHRASE_BEATS,
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
@@ -197,6 +198,10 @@ class PhraseGenerator:
         rhythmic_density    0–1 busyness from arc controller; 0=lyrical/slow,
                             1=bebop/fast.  Scales singable-duration bias inversely:
                             full boost at density=0, none at density=1.
+        max_phrase_beats    hard beat-accumulator ceiling.  Defaults to the global
+                            MAX_PHRASE_BEATS constant (16 beats).  Pass the bass
+                            phrase duration in beats for trading-bars mode so the
+                            sax response fills exactly the same span.
 
         Returns list of {pitch, duration_beats, velocity_scale} dicts.
         velocity_scale is 0.75–1.25; apply to base phrase velocity in the caller.
@@ -348,7 +353,7 @@ class PhraseGenerator:
                     dur_beats          = token_to_dur(token)
                     accumulated_beats += dur_beats
                     recent_durs.append(dur_beats)
-                    if accumulated_beats >= MAX_PHRASE_BEATS:
+                    if accumulated_beats >= max_phrase_beats:
                         break
                     expecting = "pitch"
 

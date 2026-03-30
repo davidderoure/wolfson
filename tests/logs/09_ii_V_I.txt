@@ -34,19 +34,19 @@ Generation parameters:
   sax_velocity:    80
 
 Sax response:
-  n notes:    9
-  Pitches:    G4 F4 D4 D4 B-2 C4 Bb3 C4 F4
-  Dur (b):    0.60 0.20 0.20 0.28 0.50 0.38 0.21 0.95 0.33
-  Dur (s):    0.30 0.10 0.10 0.14 0.25 0.19 0.10 0.47 0.16
-  Vel scale:  0.75 0.88 1.00 1.12 1.00 1.12 1.00 0.88 0.75
-  Velocity:   60 70 80 90 80 90 80 70 60
+  n notes:    8
+  Pitches:    E3 F3 A3 C4 D4 G4 F4 D4
+  Dur (b):    0.38 0.33 0.38 0.33 0.60 0.33 0.28 0.33
+  Dur (s):    0.19 0.16 0.19 0.16 0.30 0.16 0.14 0.16
+  Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
+  Velocity:   60 71 82 94 94 82 71 60
 
   — Dm7 response above —
 
   Over G7 (G mixolydian):
-  Pitches: C5 D5 B-2 F5 D5 C5 B-2 G4 G4 F4
-  Dur(b):  0.38 0.44 0.50 0.52 0.38 0.52 0.50 0.38 0.38 0.38
+  Pitches: G5 B-2 D5 C5 G4 C4 B-2 B3 G3 F3
+  Dur(b):  0.95 0.50 0.70 1.28 0.38 0.44 1.00 1.28 1.10 0.60
 
   Over Cmaj (C ionian):
-  Pitches: F3 D4 C4 B3 B-2 A3 C4 A4 E4
-  Dur(b):  0.33 0.24 0.70 0.33 0.50 0.38 0.33 0.52 0.44
+  Pitches: D5 B-2 B4 B-2 G4 A4 B4 C5 B4 A4
+  Dur(b):  0.60 0.50 0.38 0.50 1.28 1.28 0.33 1.10 0.20 0.52

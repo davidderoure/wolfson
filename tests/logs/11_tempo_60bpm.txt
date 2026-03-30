@@ -34,8 +34,8 @@ Generation parameters:
 
 Sax response:
   n notes:    8
-  Pitches:    C4 C5 F4 C5 Bb4 C5 D5 C5
-  Dur (b):    0.70 2.35 0.60 0.38 0.44 0.33 0.70 0.70
-  Dur (s):    0.70 2.35 0.60 0.38 0.44 0.33 0.70 0.70
+  Pitches:    C5 Ab4 F4 F4 F#4 A4 F#4 G4
+  Dur (b):    1.10 0.95 0.70 1.28 0.33 1.49 0.38 1.49
+  Dur (s):    1.10 0.95 0.70 1.28 0.33 1.49 0.38 1.49
   Vel scale:  0.75 0.89 1.04 1.18 1.18 1.04 0.89 0.75
   Velocity:   60 71 82 94 94 82 71 60

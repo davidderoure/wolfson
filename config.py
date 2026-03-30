@@ -2,6 +2,15 @@
 MIDI_INPUT_PORT = 0       # index of your bass pitch-to-MIDI interface
 MIDI_OUTPUT_PORT = 1      # index of synth/output for the sax voice
 
+# Beat-matching ("trading bars") mode
+# When True, the sax response is capped to the same number of beats as the
+# incoming bass phrase, so trading 2s, 4s, or 8s emerges naturally from
+# however long the bassist plays.  A hard floor (TRADE_BEATS_MIN) prevents
+# the sax from generating a phrase too short to be musical if the bass plays
+# a very brief fill.  Enabled via --trade on the command line.
+TRADE_BEATS_MODE = False
+TRADE_BEATS_MIN  = 2.0    # minimum sax phrase length in beats even in trade mode
+
 # Self-play two-channel split
 # In --self-play mode the two voices alternate between these MIDI channels
 # so they can be routed to different sounds in a DAW (e.g. alto sax + tenor sax).

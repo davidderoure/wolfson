@@ -119,7 +119,9 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 | recapitulation | 0.3 | Lyrical return — recall themes with space |
 | resolution | 0.1 | Slowest — long tones, fading out |
 
-**Phrase length control** — four cooperating mechanisms manage phrase length. A duration-token penalty tensor applies a graduated negative logit bias to tokens above ~2 beats. A bell-curve singable-duration boost raises the floor toward quarter notes (see above). A beat accumulator hard-stops generation once the total accumulated beats reaches `MAX_PHRASE_BEATS = 16`. The arc controller caps `n_notes` at 14, uses stage-scaled multipliers (1.1× / 0.75× for leading/following), and enforces a per-stage minimum phrase length floor (4–8 notes) so even the shortest "following" phrase has enough notes to be musically complete.
+**Phrase length control** — four cooperating mechanisms manage phrase length. A duration-token penalty tensor applies a graduated negative logit bias to tokens above ~2 beats. A bell-curve singable-duration boost raises the floor toward quarter notes (see above). A beat accumulator hard-stops generation once the total accumulated beats reaches `max_phrase_beats` (default `MAX_PHRASE_BEATS = 16`). The arc controller caps `n_notes` at 14, uses stage-scaled multipliers (1.1× / 0.75× for leading/following), and enforces a per-stage minimum phrase length floor (4–8 notes) so even the shortest "following" phrase has enough notes to be musically complete.
+
+**Beat-matching / trading bars** — pass `--trade` to enable beat-matching mode. The sax response is capped to the same number of beats as the incoming bass phrase, so trading 2s, 4s, or 8s emerges naturally from however long the bassist chooses to play. A bassist who plays a tight 2-bar phrase (8 beats at 120 BPM) gets an 8-beat sax response; a long 8-bar phrase gets a matching 8-bar response. A minimum floor (`TRADE_BEATS_MIN = 2.0`) prevents very short fills from producing unmusically brief responses. The beat cap is computed from the detected tempo, so it tracks tempo changes automatically. The console log shows `cap=Nb` when trade mode is active. In self-play mode `--trade` creates stable back-and-forth exchanges of equal length.
 
 **Repetition control** — a growing logit penalty is applied to the most recently played pitch token, starting at −2.5 logits on the first immediate repeat and adding −2.0 for each further consecutive repeat. After three same-pitch notes in a row the penalty reaches −6.5 logits, effectively eliminating a fourth repeat while still permitting occasional passing-tone ornaments. The stepwise bias strength was simultaneously reduced (0.4 → 0.1) to remove a partial cancellation that was blunting the penalty's effect.
 
@@ -212,6 +214,7 @@ Best model saved to `models/sax_best.pt`.
 
 ```bash
 python main.py
+python main.py --trade          # beat-matching: sax matches bass phrase length
 ```
 
 #### Dashboard
@@ -335,7 +338,7 @@ wolfson/
 ├── demo.py                       Feature-focused testing without the arc
 ├── test-midi-in.py               Verify MIDI input port and event routing
 ├── osc-monitor.py                Print incoming OSC messages (test OSC output)
-├── config.py                     All tunable parameters (incl. SELF_PLAY_CH_A/B)
+├── config.py                     All tunable parameters (incl. SELF_PLAY_CH_A/B, TRADE_BEATS_MIN)
 ├── wolfson_train.ipynb           Google Colab training notebook
 ├── requirements.txt
 ├── input/
