@@ -339,8 +339,9 @@ Key OSC addresses:
 Pass `--self-play` to run Wolfson autonomously — no MIDI input hardware needed. The sax feeds its own output back as input, creating a continuous generative loop. The 5-minute structural arc still governs the performance.
 
 ```bash
-python main.py --self-play           # 120 BPM
-python main.py --self-play --bpm 90  # set tempo
+python main.py --self-play              # 120 BPM
+python main.py --self-play --bpm 90    # set tempo
+python main.py --self-play --dashboard  # with full-screen display
 ```
 
 The system seeds itself with a short D minor pentatonic motif, then responds to each phrase it generates. Each response seeds the next, so the musical conversation develops and evolves over the full arc. Useful for:
@@ -348,9 +349,22 @@ The system seeds itself with a short D minor pentatonic motif, then responds to 
 - Testing the arc structure and harmonic progression in real time
 - Leaving it running as a generative ambient piece
 
-**Two-channel dialogue** — in self-play mode, phrases alternate between MIDI channel 1 and MIDI channel 2 (configurable as `SELF_PLAY_CH_A` / `SELF_PLAY_CH_B` in `config.py`). Route channel 1 to one synth voice (e.g. alto sax) and channel 2 to another (e.g. tenor sax, or a contrasting timbre) to make the call-and-response structure directly audible. Odd-numbered phrases play on channel 1; even-numbered phrases play on channel 2. In live-bass mode the sax always plays on channel 1.
+**Two-channel dialogue** — phrases automatically alternate between MIDI channel 1 and MIDI channel 2, making the call-and-response structure directly visible in a DAW and directly audible if the two channels are routed to different sounds.
 
-Console output is identical to normal mode: each phrase logs stage, tempo, MIDI channel, leadership, harmonic mode, scale source, contour, velocity, modal strength, rhythmic density, and note count. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
+| Channel | Phrases | Suggested voice |
+|---------|---------|-----------------|
+| 1 | Odd (1, 3, 5 …) | Alto sax / higher register |
+| 2 | Even (2, 4, 6 …) | Tenor sax / lower register |
+
+DAW setup (Logic, Ableton, etc.):
+1. Create two software instrument tracks, both receiving from the Wolfson MIDI output port
+2. Set one track to receive channel 1, the other to channel 2
+3. Assign different sounds — contrasting timbres (alto + tenor, oboe + clarinet) make the dialogue most audible
+4. Record-arm both tracks — the call-and-response appears as two separate MIDI regions
+
+The channel numbers are configurable in `config.py` (`SELF_PLAY_CH_A`, `SELF_PLAY_CH_B`). In live-bass mode the sax always plays on channel 1.
+
+Console output logs `ch=N` on every phrase so you can see which voice is speaking. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
 
 ## Testing individual features
 
