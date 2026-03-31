@@ -263,7 +263,7 @@ function showSummary(data) {
     return d;
   }
   function row(label, bval, sval) {
-    grid.appendChild(cell(label, "#555",    false));
+    grid.appendChild(cell(label, "#999",    false));
     grid.appendChild(cell(bval,  "#ffffff", false, "right"));
     grid.appendChild(cell(sval,  "#00ffff", false, "right"));
   }
@@ -296,13 +296,13 @@ function showSummary(data) {
   var obsList = data.observations || [];
   if (obsList.length > 0) {
     var hdr = document.createElement("div");
-    hdr.style.cssText = "color:#444;font-size:.6em;letter-spacing:2px;" +
+    hdr.style.cssText = "color:#888;font-size:.6em;letter-spacing:2px;" +
       "text-transform:uppercase;margin-bottom:10px;margin-top:4px";
     hdr.textContent = "observations";
     obs.appendChild(hdr);
     obsList.forEach(function(o) {
       var d = document.createElement("div");
-      d.style.cssText = "color:#777;font-size:.8em;margin-bottom:8px;line-height:1.5";
+      d.style.cssText = "color:#aaa;font-size:.8em;margin-bottom:8px;line-height:1.5";
       d.textContent = "\u2014 " + o;
       obs.appendChild(d);
     });
@@ -383,6 +383,7 @@ class WebAudienceDisplay:
         self._subs_lock    = threading.Lock()
         self._phrase_count = 0
         self._tunnel_proc  = None  # cloudflared subprocess, if started
+        self._summary      = None  # sticky end-of-arc summary; never cleared by update()
 
         # Suppress Flask/Werkzeug startup noise
         log = logging.getLogger("werkzeug")
@@ -457,7 +458,12 @@ class WebAudienceDisplay:
             """JSON snapshot for polling — no SSE, works through any proxy."""
             from flask import jsonify
             with self._state_lock:
-                return jsonify(dict(self._state))
+                state = dict(self._state)
+            # Always inject the sticky summary if available so it is never
+            # missed regardless of update() call ordering.
+            if self._summary is not None:
+                state["summary"] = self._summary
+            return jsonify(state)
 
         @app.route("/stream")
         def stream():
@@ -692,15 +698,21 @@ class WebAudienceDisplay:
         in main.py — keys ``bass``, ``sax``, and ``observations``.  The JS
         layer renders it as a full-screen overlay once and keeps it visible
         for the rest of the session.
+
+        Stored in both ``_summary`` (sticky; injected by every /poll response)
+        and ``_state`` (for immediate consistency) so the summary is never
+        lost due to a concurrent update() call.
         """
+        self._summary = summary
         with self._state_lock:
-            self._state = dict(self._state)   # shallow copy
+            self._state = dict(self._state)
             self._state["summary"] = summary
 
     def reset_summary(self):
         """Remove the summary from state so browsers return to the live view.
         Called at the start of a new loop iteration before the arc restarts.
         """
+        self._summary = None
         with self._state_lock:
             self._state = {k: v for k, v in self._state.items() if k != "summary"}
             self._phrase_count = 0
