@@ -346,6 +346,31 @@ class WebAudienceDisplay:
             )
             return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
+        @app.route("/nosse")
+        def nosse():
+            """Main display using 2-second polling instead of SSE (diagnostic).
+            If this renders correctly but / does not, the SSE connection is
+            causing the rendering failure through the Cloudflare tunnel."""
+            poll_override = (
+                "<script>"
+                "function connect(){}"   # no-op: disable SSE
+                ";(function poll(){"
+                "fetch('/poll').then(function(r){return r.json();})"
+                ".then(function(s){update(s);}).catch(function(){});"
+                "setTimeout(poll,2000);"
+                "})();"
+                "</script>"
+            )
+            html = _HTML.replace("</body>", poll_override + "</body>")
+            return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+        @app.route("/poll")
+        def poll():
+            """JSON snapshot for polling — no SSE, works through any proxy."""
+            from flask import jsonify
+            with self._state_lock:
+                return jsonify(dict(self._state))
+
         @app.route("/stream")
         def stream():
             q = queue.Queue(maxsize=16)
