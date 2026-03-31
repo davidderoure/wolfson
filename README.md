@@ -472,7 +472,7 @@ wolfson/
 │   └── phrase_memory.py          Stores phrases + motifs + lyrical motifs for recall and development
 ├── generator/
 │   ├── lstm_model.py             LSTM with chord conditioning
-│   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, singable duration bias, rest injection, phrase length control
+│   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, register contrast, singable duration bias, rest injection, phrase length control
 │   └── train.py                  Training script
 ├── controller/
 │   ├── arc_controller.py         Arc, leadership, proactive mode, modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
@@ -480,7 +480,7 @@ wolfson/
 ├── output/
 │   ├── midi_output.py            Per-note MIDI playback with articulation
 │   ├── dashboard.py              Rich full-screen terminal display, black background, high-contrast (--dashboard)
-│   ├── web_display.py            Audience web display served over HTTP/SSE (--web)
+│   ├── web_display.py            Audience web display served over HTTP with 2-second polling (--web)
 │   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)
 ├── data/
 │   ├── encoding.py               Pitch+duration token encoding
