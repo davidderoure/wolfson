@@ -481,3 +481,7 @@ Set `DEFAULT_INSTRUMENT = "trumpet"` in `config.py`, or pass `instrument="trumpe
 ## Acknowledgements
 
 Solo transcriptions from the [Weimar Jazz Database](https://jazzomat.hfm-weimar.de/), Jazzomat Research Project, Hochschule für Musik Franz Liszt Weimar.
+
+Wolfson was created for a performance at [Wolfson College, Oxford](https://www.wolfson.ox.ac.uk/) on 1st May 2026.
+
+It draws on insights from previous work with many musicians and computer scientists, in particular those involved with [Music, Computing and AI — Three Talks and a Mini-Concert](https://www.stcatz.ox.ac.uk/music-computing-and-ai-three-talks-and-a-mini-concert/) at St Catherine's College, Oxford, on 20th March 2024: Professor Ray d'Inverno (University of Southampton), Professor Mark d'Inverno (Goldsmiths College, University of London), and Professor David De Roure (University of Oxford), who performed jazz standards together as bass, piano, and drums.
