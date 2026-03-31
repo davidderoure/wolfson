@@ -469,6 +469,20 @@ Outputs:
 | 20 | Voice leading — Dm7 endpoint targeting (chord tones D, F, C) |
 | 21 | Voice leading — G7 endpoint targeting (chord tones G, B, F) |
 
+## Analysis tools
+
+`tools/analyse_midi.py` parses self-play MIDI recordings and prints per-stage note duration statistics for the melody channel, used to verify that the arc creates audible stage differentiation at different tempos.
+
+```bash
+# Single file
+python tools/analyse_midi.py /path/to/recording.mid
+
+# Side-by-side comparison across tempos
+python tools/analyse_midi.py 60bpm.mid 90bpm.mid 120bpm.mid
+```
+
+For each stage (sparse / building / peak / recapitulation / resolution) it reports note count, mean duration, median duration, short% (< 0.4 beats) and long% (≥ 0.75 beats). A summary comparison table is printed when multiple files are given.
+
 ## Project structure
 
 ```
@@ -505,9 +519,11 @@ wolfson/
 │   ├── scales.py                 Mode interval tables and scale pitch-class helpers
 │   ├── instruments.py            Instrument family definitions and pitch ranges
 │   └── prepare.py                WJD data preparation script
-└── tests/
-    ├── run_tests.py              Automated test suite; writes logs + demo.mid
-    └── logs/                     Per-test log files (generated)
+├── tests/
+│   ├── run_tests.py              Automated test suite; writes logs + demo.mid
+│   └── logs/                     Per-test log files (generated)
+└── tools/
+    └── analyse_midi.py           Stage-by-stage duration analysis of self-play MIDI recordings
 ```
 
 ## Extending to other instruments
