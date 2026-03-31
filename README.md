@@ -65,8 +65,10 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                                                   output only)
                                                                        │
                                                                   MidiOutput
-                                                              (per-note velocity
-                                                               from energy arc)
+                                                              (per-note velocity:
+                                                               energy arc ×
+                                                               peak accent ×
+                                                               end taper)
                                                                        │
                                                                        ▼
                                                                Synth (sax voice)
@@ -102,6 +104,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 **Live tempo tracking** — a `BeatEstimator` infers BPM from inter-onset intervals in the bass line. Generated sax phrases play back in time with the bassist's actual tempo. No click track or advance setup required.
 
 **Dynamics** — the mean MIDI velocity of each bass phrase is tracked and mapped to the sax output velocity, so the sax mirrors the bassist's dynamic level. A stage multiplier modulates this further: sparse and resolution stages are inherently softer; the peak stage pushes louder. Playing quietly draws a quiet response; playing hard drives the sax to match.
+
+**Phrase-shape dynamics** — after generation, two post-processing passes give each phrase a natural dynamic arc. First, the highest-pitch note receives a ×1.15 velocity boost (melodic peak accent), reflecting the jazz tendency to push dynamically at the top of a line. Second, the last two pitched notes are tapered to 85% and 70% of their computed velocity (phrase-end taper), simulating breath pressure releasing and giving each phrase a sense of completion rather than an abrupt cutoff. Both passes layer on top of the energy-arc per-note velocity_scale, so they augment rather than override the existing phrase shape.
 
 **Articulation** — each generated note sounds for 85% of its time slot, with a short silence before the next note. A minimum duration floor (0.2 beats, ≈100 ms at 120 BPM) prevents imperceptibly short notes from appearing in dense generated passages.
 
@@ -487,7 +491,7 @@ For each stage (sparse / building / peak / recapitulation / resolution) it repor
 
 ```
 wolfson/
-├── main.py                       Entry point (full 5-minute performance)
+├── main.py                       Entry point (full 5-minute performance); stochastic thinning, phrase-shape dynamics
 ├── demo.py                       Feature-focused testing without the arc
 ├── test-midi-in.py               Verify MIDI input port and event routing
 ├── osc-monitor.py                Print incoming OSC messages (test OSC output)
