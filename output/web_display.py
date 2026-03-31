@@ -401,7 +401,8 @@ class WebAudienceDisplay:
     # Lifecycle
     # -----------------------------------------------------------------------
 
-    def start(self, tunnel: bool = False):
+    def start(self, tunnel: bool = False,
+              tinyurl_token: str = "", tinyurl_alias: str = ""):
         """Start the Flask server in a background daemon thread.
 
         Parameters
@@ -410,6 +411,13 @@ class WebAudienceDisplay:
             If True, also open a cloudflared quick tunnel and print the
             public URL.  Requires ``cloudflared`` to be installed:
             ``brew install cloudflare/cloudflare/cloudflared``
+        tinyurl_token : str
+            TinyURL API bearer token.  When provided alongside tinyurl_alias,
+            the alias is automatically updated to point to the tunnel URL so
+            the audience can always use the same stable link.
+        tinyurl_alias : str
+            TinyURL alias to update, e.g. ``"wolfson-live"`` for
+            ``tinyurl.com/wolfson-live``.
         """
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
@@ -418,7 +426,7 @@ class WebAudienceDisplay:
         print(f"Audience display (local):   {url}")
         print(f"  Share with audience on the same WiFi network.")
         if tunnel:
-            self._start_tunnel(self._port)
+            self._start_tunnel(self._port, tinyurl_token, tinyurl_alias)
 
     def _wait_for_flask(self, port: int, timeout: float = 10.0):
         """Block until Flask is accepting connections, or timeout expires."""
@@ -434,7 +442,8 @@ class WebAudienceDisplay:
                 time.sleep(0.2)
         return False                 # timed out
 
-    def _start_tunnel(self, port: int):
+    def _start_tunnel(self, port: int,
+                      tinyurl_token: str = "", tinyurl_alias: str = ""):
         """Launch cloudflared and print the public trycloudflare.com URL."""
         # Wait for Flask to be ready before cloudflared tries to connect,
         # to avoid Cloudflare Error 1033 (origin unreachable on first request).
@@ -460,9 +469,12 @@ class WebAudienceDisplay:
                 line = raw.decode("utf-8", errors="replace")
                 m = pattern.search(line)
                 if m:
-                    print(f"Audience display (public):  {m.group()}")
+                    tunnel_url = m.group()
+                    print(f"Audience display (public):  {tunnel_url}")
                     print(f"  Share this URL with the audience anywhere.")
                     url_found.set()
+                    if tinyurl_token and tinyurl_alias:
+                        self._update_tinyurl(tunnel_url, tinyurl_token, tinyurl_alias)
                     break
             # Drain remaining stderr so the pipe buffer never fills
             for _ in proc.stderr:
@@ -473,6 +485,29 @@ class WebAudienceDisplay:
         if not url_found.wait(timeout=20):
             print("  cloudflared tunnel URL not found within 20 s "
                   "(is cloudflared installed and reachable?)")
+
+    def _update_tinyurl(self, tunnel_url: str, token: str, alias: str):
+        """Update a TinyURL alias to point to tunnel_url."""
+        import urllib.request as _ur
+        payload = json.dumps({"url": tunnel_url}).encode()
+        req = _ur.Request(
+            f"https://api.tinyurl.com/alias/tinyurl.com/{alias}",
+            data    = payload,
+            method  = "PATCH",
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type":  "application/json",
+            },
+        )
+        try:
+            with _ur.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    print(f"Audience display (stable):  https://tinyurl.com/{alias}")
+                    print(f"  This link always points to the current tunnel.")
+                else:
+                    print(f"  TinyURL update returned HTTP {resp.status}")
+        except Exception as exc:
+            print(f"  TinyURL update failed: {exc}")
 
     def stop(self):
         """Signal all connected clients to disconnect and terminate the tunnel."""

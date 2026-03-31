@@ -38,6 +38,19 @@ REST_PITCH = -1                # sentinel: a note dict with this pitch = silence
 # or in an unusual register. 0 = no hint (estimator uses its running average).
 TEMPO_HINT_BPM = 0
 
+# TinyURL integration (optional)
+# When set, Wolfson automatically updates a fixed TinyURL alias to point to
+# the current trycloudflare.com URL each run, so the audience always gets
+# the same link regardless of which tunnel URL was assigned.
+#
+# Setup (one-time):
+#   1. Create an API token at https://tinyurl.com/app/settings/tokens
+#   2. Create your alias once at https://tinyurl.com/create — e.g. "wolfson-live"
+#      (tinyurl.com/wolfson-live will then always point to the current tunnel)
+#   3. Fill in the values below
+TINYURL_TOKEN = ""       # your API bearer token
+TINYURL_ALIAS = ""       # just the alias part, e.g. "wolfson-live"
+
 # Dashboard and OSC (both off by default; enable via CLI flags)
 DASHBOARD_ENABLED = False   # --dashboard  : rich full-screen terminal display
 OSC_ENABLED       = False   # --osc-host   : OSC UDP output
