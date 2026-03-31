@@ -206,6 +206,13 @@ def main():
         if not _arc_started.is_set():
             arc.start()
             _arc_started.set()
+        # Annotate notes with current beat duration so summary stats can
+        # compute beat-relative durations for bass phrases (which arrive from
+        # PhraseDetector in wall-clock seconds, not beats).
+        bds = beats.beat_duration
+        for n in phrase:
+            if "beat_dur_sec" not in n:
+                n["beat_dur_sec"] = bds
         motifs = extract_interval_motifs(phrase)
         memory.store(phrase, source="bass", motifs=motifs)
         params = arc.on_bass_phrase(phrase)
@@ -380,12 +387,23 @@ def main():
     # Proactive background thread
     # ------------------------------------------------------------------
 
+    _summary_computed = [False]
+
     def _proactive_loop():
         while _running.is_set():
             time.sleep(PROACTIVE_CHECK_INTERVAL)
+            elapsed = arc.elapsed()
+            # Arc completion: compute performance summary once
+            if elapsed >= ARC_DURATION_SEC and not _summary_computed[0]:
+                _summary_computed[0] = True
+                summary = _compute_performance_summary(memory)
+                _print_performance_summary(summary)
+                if web_out:
+                    web_out.show_summary(summary)
             # Auto-stop self-play at arc completion (300s)
-            if self_play and arc.elapsed() >= ARC_DURATION_SEC:
-                print("\nArc complete. Stopping.")
+            if self_play and elapsed >= ARC_DURATION_SEC:
+                if not dashboard:
+                    print("\nArc complete. Stopping.")
                 _running.clear()
                 break
             if arc.should_play_proactively():
@@ -480,6 +498,136 @@ def main():
             listener.stop()
         midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])
         midi_out.stop()
+
+
+# ------------------------------------------------------------------
+# Performance summary
+# ------------------------------------------------------------------
+
+_SUMMARY_NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+
+
+def _midi_to_name(midi: int) -> str:
+    return _SUMMARY_NOTE_NAMES[midi % 12] + str(midi // 12 - 1)
+
+
+def _compute_performance_summary(memory) -> dict:
+    """
+    Compute two-column stats from PhraseMemory for the end-of-arc display.
+
+    Returns a dict with keys "bass", "sax", and "observations", where
+    bass/sax are stat dicts and observations is a list of plain-text
+    observations addressed to the human player.
+    """
+    def stats(source: str) -> dict:
+        entries = memory._filter(source)
+        if not entries:
+            return {"phrases": 0}
+
+        dur_beats_all = []
+        velocities    = []
+        pitches       = []
+
+        for entry in entries:
+            for n in entry["phrase"]:
+                p = n.get("pitch", REST_PITCH)
+                if p == REST_PITCH or p <= 0:
+                    continue
+                bds = n.get("beat_dur_sec", 0.0)
+                if bds > 0:
+                    dur_beats_all.append((n["offset"] - n["onset"]) / bds)
+                velocities.append(n.get("velocity", 64))
+                pitches.append(p)
+
+        result: dict = {"phrases": len(entries), "notes": len(pitches)}
+
+        if dur_beats_all:
+            mean_dur  = sum(dur_beats_all) / len(dur_beats_all)
+            short_pct = 100 * sum(d < 0.4 for d in dur_beats_all) / len(dur_beats_all)
+            result["mean_dur"]  = round(mean_dur, 2)
+            result["short_pct"] = int(round(short_pct))
+
+        if pitches:
+            result["pitch_lo"] = _midi_to_name(min(pitches))
+            result["pitch_hi"] = _midi_to_name(max(pitches))
+
+        if velocities:
+            result["vel_lo"] = min(velocities)
+            result["vel_hi"] = max(velocities)
+
+        return result
+
+    bass = stats("bass")
+    sax  = stats("sax")
+
+    # Plain-text observations addressed to the human player — only fired when
+    # a value is clearly outside a reasonable range.  Framed as observations,
+    # not judgements.
+    observations: list[str] = []
+    if "mean_dur" in bass:
+        if bass["mean_dur"] < 0.40:
+            observations.append(
+                "Your notes were quite short — try sustaining longer ideas.")
+        elif bass["mean_dur"] > 1.20:
+            observations.append(
+                "You played long, sustained notes — good melodic space.")
+    if "vel_lo" in bass and "vel_hi" in bass:
+        if bass["vel_hi"] - bass["vel_lo"] < 20:
+            observations.append(
+                "Your dynamic range was narrow — try varying your touch more.")
+    if bass.get("phrases", 0) > 0 and sax.get("phrases", 0) > 0:
+        ratio = bass["phrases"] / sax["phrases"]
+        if ratio < 0.5:
+            observations.append(
+                "The sax played many more phrases than you — "
+                "try being more active in the conversation.")
+        elif ratio > 2.0:
+            observations.append(
+                "You drove most of the conversation — "
+                "try leaving more space for the sax to initiate.")
+
+    return {"bass": bass, "sax": sax, "observations": observations}
+
+
+def _print_performance_summary(summary: dict):
+    """Print the two-column performance summary to the console."""
+    bass = summary.get("bass", {})
+    sax  = summary.get("sax",  {})
+    obs  = summary.get("observations", [])
+    w    = 54
+
+    def row(label, bval, sval):
+        print(f"  {label:<18} {str(bval):>12}  {str(sval):>12}")
+
+    print("\n" + "═" * w)
+    print("  PERFORMANCE SUMMARY")
+    print("═" * w)
+    row("", "BASS (you)", "SAX")
+    print("  " + "─" * (w - 2))
+    row("Phrases",     bass.get("phrases", "—"), sax.get("phrases", "—"))
+    row("Notes",       bass.get("notes",   "—"), sax.get("notes",   "—"))
+    if "mean_dur" in bass or "mean_dur" in sax:
+        row("Note length",
+            f"{bass['mean_dur']:.2f}b" if "mean_dur" in bass else "—",
+            f"{sax['mean_dur']:.2f}b"  if "mean_dur" in sax  else "—")
+    if "short_pct" in bass or "short_pct" in sax:
+        row("Short notes",
+            f"{bass['short_pct']}%" if "short_pct" in bass else "—",
+            f"{sax['short_pct']}%"  if "short_pct" in sax  else "—")
+    if "pitch_lo" in bass or "pitch_lo" in sax:
+        row("Pitch range",
+            f"{bass['pitch_lo']} – {bass['pitch_hi']}" if "pitch_lo" in bass else "—",
+            f"{sax['pitch_lo']} – {sax['pitch_hi']}"   if "pitch_lo" in sax  else "—")
+    if "vel_lo" in bass or "vel_lo" in sax:
+        row("Dynamics",
+            f"{bass['vel_lo']} – {bass['vel_hi']}" if "vel_lo" in bass else "—",
+            f"{sax['vel_lo']} – {sax['vel_hi']}"   if "vel_lo" in sax  else "—")
+    print("═" * w)
+    if obs:
+        print()
+        for o in obs:
+            print(f"  — {o}")
+    print()
 
 
 # ------------------------------------------------------------------

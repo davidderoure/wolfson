@@ -123,6 +123,13 @@ _HTML = """\
 <div id="notes"   style="min-height:38px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
 <div id="trigger" style="text-align:center;font-size:.8em;color:#555;padding:6px;letter-spacing:1px">waiting&hellip;</div>
 
+<div id="summary-overlay" style="display:none;position:fixed;inset:0;background:#0a0a0a;overflow-y:auto;padding:20px 16px;z-index:90">
+  <div style="color:#00ffff;font-size:1.1em;font-weight:bold;letter-spacing:4px;margin-bottom:2px">WOLFSON</div>
+  <div style="color:#444;font-size:.65em;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase">performance complete</div>
+  <div id="sum-grid" style="display:grid;grid-template-columns:auto 1fr 1fr;gap:0;margin-bottom:16px;font-size:.85em"></div>
+  <div id="sum-obs"></div>
+</div>
+
 <div id="waiting" style="display:flex;position:fixed;inset:0;background:#0a0a0a;flex-direction:column;align-items:center;justify-content:center;z-index:100">
   <div style="color:#00ffff;font-size:1.6em;font-weight:bold;letter-spacing:6px;margin-bottom:20px">WOLFSON</div>
   <div style="color:#444;font-size:.75em;letter-spacing:2px">performance will begin shortly</div>
@@ -239,14 +246,81 @@ function update(state) {
   pulse(stageCol);
 }
 
+function showSummary(data) {
+  var bass = data.bass || {};
+  var sax  = data.sax  || {};
+  var grid = document.getElementById("sum-grid");
+  var obs  = document.getElementById("sum-obs");
+  grid.innerHTML = ""; obs.innerHTML = "";
+
+  function cell(text, color, bold, align) {
+    var d = document.createElement("div");
+    d.style.cssText = "padding:7px 6px;border-bottom:1px solid #1a1a1a;" +
+      "color:" + (color || "#ffffff") + ";" +
+      (bold ? "font-weight:bold;" : "") +
+      (align === "right" ? "text-align:right;" : "");
+    d.textContent = text || "—";
+    return d;
+  }
+  function row(label, bval, sval) {
+    grid.appendChild(cell(label, "#555",    false));
+    grid.appendChild(cell(bval,  "#ffffff", false, "right"));
+    grid.appendChild(cell(sval,  "#00ffff", false, "right"));
+  }
+
+  // Header
+  grid.appendChild(cell("",            "#555",    false));
+  grid.appendChild(cell("BASS (you)", "#ffffff", true,  "right"));
+  grid.appendChild(cell("SAX",         "#00ffff", true,  "right"));
+
+  row("Phrases",    bass.phrases, sax.phrases);
+  row("Notes",      bass.notes,   sax.notes);
+  if (bass.mean_dur !== undefined || sax.mean_dur !== undefined)
+    row("Note length",
+        bass.mean_dur !== undefined ? bass.mean_dur.toFixed(2) + "b" : "—",
+        sax.mean_dur  !== undefined ? sax.mean_dur.toFixed(2)  + "b" : "—");
+  if (bass.short_pct !== undefined || sax.short_pct !== undefined)
+    row("Short notes",
+        bass.short_pct !== undefined ? bass.short_pct + "%" : "—",
+        sax.short_pct  !== undefined ? sax.short_pct  + "%" : "—");
+  if (bass.pitch_lo || sax.pitch_lo)
+    row("Pitch range",
+        bass.pitch_lo ? bass.pitch_lo + " \u2013 " + bass.pitch_hi : "—",
+        sax.pitch_lo  ? sax.pitch_lo  + " \u2013 " + sax.pitch_hi  : "—");
+  if (bass.vel_lo !== undefined || sax.vel_lo !== undefined)
+    row("Dynamics",
+        bass.vel_lo !== undefined ? bass.vel_lo + " \u2013 " + bass.vel_hi : "—",
+        sax.vel_lo  !== undefined ? sax.vel_lo  + " \u2013 " + sax.vel_hi  : "—");
+
+  // Observations (addressed to the human player)
+  var obsList = data.observations || [];
+  if (obsList.length > 0) {
+    var hdr = document.createElement("div");
+    hdr.style.cssText = "color:#444;font-size:.6em;letter-spacing:2px;" +
+      "text-transform:uppercase;margin-bottom:10px;margin-top:4px";
+    hdr.textContent = "observations";
+    obs.appendChild(hdr);
+    obsList.forEach(function(o) {
+      var d = document.createElement("div");
+      d.style.cssText = "color:#777;font-size:.8em;margin-bottom:8px;line-height:1.5";
+      d.textContent = "\u2014 " + o;
+      obs.appendChild(d);
+    });
+  }
+
+  document.getElementById("summary-overlay").style.display = "block";
+}
+
 // Polling: fetch /poll every 2 s, update only when phrase_count changes.
 // More robust than SSE through proxies and Cloudflare tunnels.
 // _lastStarted tracks whether the performance has begun; the waiting
 // overlay is shown whenever started=false, so stale browsers from a
 // previous run automatically reset to the pre-show screen on the first
 // poll after the script is restarted.
-var _lastPhrase  = -1;
-var _lastStarted = false;
+// _summaryShown ensures the summary overlay fires once and stays visible.
+var _lastPhrase   = -1;
+var _lastStarted  = false;
+var _summaryShown = false;
 function poll() {
   fetch("/poll")
     .then(function(r) { return r.json(); })
@@ -257,7 +331,11 @@ function poll() {
         _lastStarted = started;
         document.getElementById("waiting").style.display = started ? "none" : "flex";
       }
-      if (started && (state.phrase_count || 0) !== _lastPhrase) {
+      if (!_summaryShown && state.summary) {
+        _summaryShown = true;
+        showSummary(state.summary);
+      }
+      if (started && !_summaryShown && (state.phrase_count || 0) !== _lastPhrase) {
         _lastPhrase = state.phrase_count || 0;
         update(state);
       }
@@ -599,6 +677,19 @@ class WebAudienceDisplay:
     # -----------------------------------------------------------------------
     # Update
     # -----------------------------------------------------------------------
+
+    def show_summary(self, summary: dict):
+        """
+        Push the end-of-arc performance summary to all connected browsers.
+
+        *summary* is the dict produced by ``_compute_performance_summary()``
+        in main.py — keys ``bass``, ``sax``, and ``observations``.  The JS
+        layer renders it as a full-screen overlay once and keeps it visible
+        for the rest of the session.
+        """
+        with self._state_lock:
+            self._state = dict(self._state)   # shallow copy
+            self._state["summary"] = summary
 
     def update(
         self,
