@@ -167,6 +167,8 @@ The first and last pitched notes of every phrase are always protected regardless
 
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase. The proactive trigger checks every 0.5 seconds; during the sparse stage the sax will initiate after 7.5 seconds of bass silence. If you want to play first, a short two-note figure followed by one second of silence is enough to trigger the first response before the 7.5-second window expires.
 
+**Loop mode** — pass `--loop` to restart the arc automatically at the end of each 5-minute performance. PhraseMemory is cleared and the ArcController and HarmonyController are reset between loops, so each arc is a clean slate — appropriate for installations where different users may play in succession. The end-of-arc performance summary is shown before the gap, then the live view resumes automatically. `--loop-gap` sets the pause between arcs (default 8 seconds). In self-play mode the seed phrase re-fires after the gap; in live mode the arc waits for your first bass note.
+
 **Arc timing** — the 5-minute performance arc starts when you play your first bass phrase, not when the script is launched. This means you can start the script (and the web server) well in advance of the performance without consuming arc time — the system waits silently in a pre-show state until the first note arrives. In self-play mode the arc starts immediately as the bootstrap phrase fires automatically.
 
 ### Performance arc
@@ -257,6 +259,8 @@ Best model saved to `models/sax_best.pt`.
 ```bash
 python main.py
 python main.py --trade          # beat-matching: sax matches bass phrase length
+python main.py --loop           # loop continuously: new arc starts after each 5 minutes
+python main.py --loop --loop-gap 15   # 15-second pause between arcs (default: 8s)
 ```
 
 #### Dashboard
@@ -388,12 +392,15 @@ Pass `--self-play` to run Wolfson autonomously — no MIDI input hardware needed
 python main.py --self-play              # 120 BPM
 python main.py --self-play --bpm 90    # set tempo
 python main.py --self-play --dashboard  # with full-screen display
+python main.py --self-play --loop       # loop continuously (new arc after each 5 min)
+python main.py --self-play --loop --loop-gap 10 --web   # installation mode
 ```
 
 The system seeds itself with a short D minor pentatonic motif, then responds to each phrase it generates. Each response seeds the next, so the musical conversation develops and evolves over the full arc. Useful for:
 - Listening to the model's musical character without a musician present
 - Testing the arc structure and harmonic progression in real time
 - Leaving it running as a generative ambient piece
+- Installation contexts where the system should run unattended and reset automatically
 
 **Two-channel dialogue** — phrases automatically alternate between MIDI channel 1 and MIDI channel 2, making the call-and-response structure directly visible in a DAW and directly audible if the two channels are routed to different sounds.
 
@@ -492,7 +499,7 @@ For each stage (sparse / building / peak / recapitulation / resolution) it repor
 
 ```
 wolfson/
-├── main.py                       Entry point (full 5-minute performance); stochastic thinning, phrase-shape dynamics
+├── main.py                       Entry point (full 5-minute performance); stochastic thinning, phrase-shape dynamics, loop mode
 ├── demo.py                       Feature-focused testing without the arc
 ├── test-midi-in.py               Verify MIDI input port and event routing
 ├── osc-monitor.py                Print incoming OSC messages (test OSC output)
