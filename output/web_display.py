@@ -233,39 +233,27 @@ function update(state) {
   pulse(stageCol);
 }
 
-function connect() {
-  const src = new EventSource("/stream");
-  const off = document.getElementById("offline");
-  src.onopen    = function() { off.style.display = "none"; };
-  src.onmessage = function(e) { try { update(JSON.parse(e.data)); } catch(_){} };
-  src.onerror   = function() {
-    src.close();
-    off.style.display = "block";
-    setTimeout(connect, 3000);
-  };
+// Polling: fetch /poll every 2 s, update only when phrase_count changes.
+// More robust than SSE through proxies and Cloudflare tunnels.
+var _lastPhrase = -1;
+function poll() {
+  fetch("/poll")
+    .then(function(r) { return r.json(); })
+    .then(function(state) {
+      document.getElementById("offline").style.display = "none";
+      if ((state.phrase_count || 0) !== _lastPhrase) {
+        _lastPhrase = state.phrase_count || 0;
+        update(state);
+      }
+    })
+    .catch(function() {
+      document.getElementById("offline").style.display = "block";
+    });
+  setTimeout(poll, 2000);
 }
-
-// Re-apply critical colours via JS after any Cloudflare-injected scripts
-// have had a chance to run (they fire at end-of-body, before rAF).
-function reapplyColours() {
-  var b = document.body;
-  b.style.background = "#0a0a0a";
-  b.style.color       = "#ffffff";
-  document.getElementById("hdr-info").style.color   = "#888888";
-  document.getElementById("bpm").style.color        = "#00ffff";
-  document.getElementById("phrase-n").style.color   = "#ffffff";
-  document.getElementById("harm").style.color       = "#00ffff";
-  document.getElementById("scale").style.color      = "#ffffff";
-  document.getElementById("contour").style.color    = "#ffffff";
-  document.getElementById("vel").style.color        = "#ffffff";
-  document.getElementById("stage-name").style.color = "#ffffff";
-  document.getElementById("stage-rem").style.color  = "#888888";
-  document.getElementById("trigger").style.color    = "#555555";
-}
-requestAnimationFrame(reapplyColours);
 
 buildArc(0);
-connect();
+poll();
 </script>
 </body>
 </html>
