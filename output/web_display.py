@@ -459,26 +459,43 @@ class WebAudienceDisplay:
             print("  Warning: Flask did not become ready — tunnel may show Error 1033")
 
         if tunnel_name:
-            self._start_named_tunnel(tunnel_name, tunnel_host)
+            self._start_named_tunnel(tunnel_name, tunnel_host, port)
         else:
             self._start_quick_tunnel(port, tinyurl_token, tinyurl_alias)
 
-    def _start_named_tunnel(self, name: str, host: str):
-        """Run a pre-configured named tunnel (stable URL, no URL parsing needed)."""
+    def _start_named_tunnel(self, name: str, host: str, port: int = 0):
+        """Run a pre-configured named tunnel (stable URL, no URL parsing needed).
+
+        Passes --url so Wolfson controls the port rather than relying on the
+        ingress entry in ~/.cloudflared/config.yml.
+        """
+        cmd = ["cloudflared", "tunnel", "run"]
+        if port:
+            cmd += ["--url", f"http://localhost:{port}"]
+        cmd.append(name)
         try:
             proc = subprocess.Popen(
-                ["cloudflared", "tunnel", "run", name],
+                cmd,
                 stdout = subprocess.DEVNULL,
-                stderr = subprocess.DEVNULL,
+                stderr = subprocess.PIPE,
             )
             self._tunnel_proc = proc
         except FileNotFoundError:
             print("  cloudflared not found — install with:")
             print("    brew install cloudflare/cloudflare/cloudflared")
             return
+
         url = f"https://{host}" if host else f"(tunnel: {name})"
         print(f"Audience display (stable):  {url}")
         print(f"  This URL is permanent — share it before the performance.")
+
+        # Log cloudflared errors in background so problems are visible
+        def _log_stderr():
+            for raw in proc.stderr:
+                line = raw.decode("utf-8", errors="replace").rstrip()
+                if any(w in line.lower() for w in ("error", "fail", "fatal")):
+                    print(f"  [cloudflared] {line}")
+        threading.Thread(target=_log_stderr, daemon=True).start()
 
     def _start_quick_tunnel(self, port: int,
                             tinyurl_token: str = "", tinyurl_alias: str = ""):
