@@ -294,11 +294,12 @@ The page shows:
 - **Last phrase note names** as coloured chips (in the current stage colour)
 - **Trigger indicator** — `⟵ bass phrase` or `◎ sax initiates`
 - **Pulse animation** — a brief coloured border flash on every new phrase
+- **Performance summary** — at arc completion a full-screen overlay replaces the live view with a two-column table comparing the human and algorithm across phrases played, note count, mean note length, short%, pitch range, and dynamic range. Plain-text observations are appended for any metric that falls outside a normal range (e.g. narrow dynamic range, very short notes, large phrase-count imbalance). Framed as observations rather than judgements.
 - Auto-reconnects silently if the connection drops
 
 The page is fully self-contained (no CDN dependencies) and loads instantly on a slow venue connection. State is delivered via 2-second polling — robust through any proxy or Cloudflare tunnel.
 
-**Performance workflow** — start the script a few minutes before the audience arrives so the URL is live and the tunnel is connected. The waiting screen holds until you play; the arc clock does not start until your first bass phrase. Share the URL (or display it on screen) and let the audience connect at their own pace before you begin.
+**Performance workflow** — start the script a few minutes before the audience arrives so the URL is live and the tunnel is connected. The waiting screen holds until you play; the arc clock does not start until your first bass phrase. Share the URL (or display it on screen) and let the audience connect at their own pace before you begin. At the end of the arc the performance summary replaces the live view automatically — the same summary also prints to the console.
 
 ##### Public tunnel (eduroam / institutional networks)
 
@@ -515,7 +516,7 @@ wolfson/
 ├── output/
 │   ├── midi_output.py            Per-note MIDI playback with articulation
 │   ├── dashboard.py              Rich full-screen terminal display, black background, high-contrast (--dashboard)
-│   ├── web_display.py            Audience web display served over HTTP with 2-second polling (--web)
+│   ├── web_display.py            Audience web display served over HTTP with 2-second polling (--web); end-of-arc performance summary overlay
 │   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)
 ├── data/
 │   ├── encoding.py               Pitch+duration token encoding
