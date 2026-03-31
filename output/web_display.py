@@ -330,6 +330,12 @@ function poll() {
       if (started !== _lastStarted) {
         _lastStarted = started;
         document.getElementById("waiting").style.display = started ? "none" : "flex";
+        // New script run detected — reset summary state so the overlay
+        // fires again when the new arc's summary arrives.
+        if (!started) {
+          _summaryShown = false;
+          document.getElementById("summary-overlay").style.display = "none";
+        }
       }
       if (!_summaryShown && state.summary) {
         _summaryShown = true;

@@ -398,6 +398,7 @@ def main():
     # ------------------------------------------------------------------
 
     _summary_computed = [False]
+    _summary_shown_at = [None]   # wall time when summary was pushed to web
     loop_mode = args.loop
     loop_gap  = args.loop_gap
 
@@ -444,15 +445,23 @@ def main():
                 _print_performance_summary(summary)
                 if web_out:
                     web_out.show_summary(summary)
+                    _summary_shown_at[0] = time.time()
                 if loop_mode:
                     _restart_arc()
                     continue
-            # Auto-stop self-play at arc completion (300s) when not looping
+            # Auto-stop self-play at arc completion (300s) when not looping.
+            # When the web display is active, wait at least 6 seconds after
+            # show_summary() so the browser has several poll cycles to pick up
+            # the summary before the loop exits.
             if self_play and not loop_mode and elapsed >= ARC_DURATION_SEC:
-                if not dashboard:
-                    print("\nArc complete. Stopping.")
-                _running.clear()
-                break
+                shown_at = _summary_shown_at[0]
+                if shown_at is not None and time.time() - shown_at < 6.0:
+                    pass   # keep looping until grace period expires
+                else:
+                    if not dashboard:
+                        print("\nArc complete. Stopping.")
+                    _running.clear()
+                    break
             if arc.should_play_proactively():
                 params = arc.get_proactive_params()
                 if params:
