@@ -253,32 +253,62 @@ The page shows:
 - **Pulse animation** — a brief coloured border flash on every new phrase
 - Auto-reconnects silently if the connection drops
 
-The page is fully self-contained (no CDN dependencies) and loads instantly on a slow venue connection. Updates are pushed via Server-Sent Events — the page is live without polling.
+The page is fully self-contained (no CDN dependencies) and loads instantly on a slow venue connection. State is delivered via 2-second polling — robust through any proxy or Cloudflare tunnel.
 
 ##### Public tunnel (eduroam / institutional networks)
 
-On eduroam or other networks where you cannot set up a local AP, use `--tunnel` to open a [cloudflared quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/). This makes an outbound HTTPS connection to Cloudflare's edge — no inbound ports required, no account needed.
+On eduroam or other networks where you cannot act as an access point, use `--tunnel` to open a Cloudflare tunnel. This makes an outbound HTTPS/TCP connection to Cloudflare's edge — no inbound ports required. eduroam blocks UDP so the tunnel uses HTTP/2 over TCP (port 443) rather than QUIC.
 
-**Install cloudflared first:**
+**Install cloudflared:**
 ```bash
 brew install cloudflare/cloudflare/cloudflared
 ```
 
-**Run with tunnel:**
+###### Option A — Named tunnel (recommended): stable URL, one-time setup
+
+Requires a free Cloudflare account and a domain managed by Cloudflare.
+
 ```bash
-python main.py --web --tunnel
+# One-time setup
+cloudflared tunnel login                        # authorise your domain
+cloudflared tunnel create wolfson               # creates credentials file
+cloudflared tunnel route dns wolfson wolfson.yourdomain.com
+```
+
+Then set in `config.py`:
+```python
+CLOUDFLARE_TUNNEL_NAME     = "wolfson"
+CLOUDFLARE_TUNNEL_HOSTNAME = "wolfson.yourdomain.com"
+```
+
+Run:
+```bash
+python main.py --self-play --web --web-port 8080 --tunnel
+```
+
+Startup output:
+```
+Audience display (local):   http://192.168.1.42:8080
+Audience display (stable):  https://wolfson.yourdomain.com
+  This URL is permanent — share it before the performance.
+```
+
+`wolfson.yourdomain.com` never changes — print it on a programme or slide.
+
+###### Option B — Quick tunnel: no setup, random URL each run
+
+No account or domain needed. URL changes every run.
+
+```bash
 python main.py --web --web-port 8080 --tunnel
 ```
 
-At startup both URLs are printed:
 ```
 Audience display (local):   http://192.168.1.42:8080
-  Share with audience on the same WiFi network.
 Audience display (public):  https://curious-fox-amazing.trycloudflare.com
-  Share this URL with the audience anywhere.
 ```
 
-The public URL changes each run (Cloudflare assigns a random subdomain). Share it via a short URL, QR code, or just read it out. All traffic is end-to-end HTTPS via Cloudflare — the Flask server itself stays on localhost.
+Share the printed URL with the audience at the start of the performance.
 
 #### OSC output
 
