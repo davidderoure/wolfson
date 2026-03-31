@@ -316,10 +316,7 @@ def main():
             # phrase above, so internal musical intelligence is unaffected.
             played_notes = _thin_phrase(notes, stage=params.get("stage", "building"))
             played_durs  = [n["duration_beats"] * beat_dur_sec for n in played_notes]
-            played_vel   = [
-                max(40, min(110, int(base_vel * n.get("velocity_scale", 1.0))))
-                for n in played_notes
-            ]
+            played_vel   = _shape_phrase_dynamics(played_notes, base_vel)
             midi_out.play_phrase(
                 pitches   = [n["pitch"] for n in played_notes],
                 durations = played_durs,
@@ -551,6 +548,57 @@ def _thin_phrase(notes: list, stage: str) -> list:
         # else: note silently omitted from MIDI output
 
     return out
+
+
+# ------------------------------------------------------------------
+# Phrase-shape dynamics
+# ------------------------------------------------------------------
+
+# Velocity multiplier applied to the highest-pitch note in a phrase.
+_PEAK_ACCENT_FACTOR = 1.15
+
+# Velocity multipliers for the penultimate and last pitched notes.
+# Simulates breath pressure dropping at the end of a phrase.
+_TAPER_END_FACTORS = [0.85, 0.70]
+
+
+def _shape_phrase_dynamics(notes: list, base_vel: int) -> list[int]:
+    """
+    Compute per-note MIDI velocities with melodic peak accent and end taper.
+
+    1. Peak accent  — the highest-pitched note gets a +15% velocity boost,
+       reflecting the natural jazz tendency to push dynamically on the peak.
+    2. End taper    — the last two pitched notes are reduced to 85% / 70% of
+       their computed velocity, simulating breath pressure dropping at the
+       phrase end and giving each phrase a sense of release.
+
+    Both passes layer on top of the energy-arc velocity_scale that is already
+    encoded per-note by the generator, so they augment rather than replace the
+    existing dynamic shape.
+
+    REST_PITCH sentinels are given a nominal velocity of 0 and are never played.
+    """
+    pitched = [(i, n) for i, n in enumerate(notes) if n.get("pitch") != REST_PITCH]
+
+    # Base velocity shaped by the energy-arc velocity_scale
+    vels = [
+        max(40, min(110, int(base_vel * n.get("velocity_scale", 1.0))))
+        if n.get("pitch") != REST_PITCH else 0
+        for n in notes
+    ]
+
+    if len(pitched) < 3:
+        return vels   # phrase too short to shape meaningfully
+
+    # 1. Melodic peak accent
+    peak_idx = max(pitched, key=lambda x: x[1].get("pitch", 0))[0]
+    vels[peak_idx] = min(120, int(vels[peak_idx] * _PEAK_ACCENT_FACTOR))
+
+    # 2. Phrase-end taper — last two pitched notes
+    for slot, (i, _) in enumerate(pitched[-2:]):
+        vels[i] = max(30, int(vels[i] * _TAPER_END_FACTORS[slot]))
+
+    return vels
 
 
 # ------------------------------------------------------------------
