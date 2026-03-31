@@ -245,6 +245,25 @@ function connect() {
   };
 }
 
+// Re-apply critical colours via JS after any Cloudflare-injected scripts
+// have had a chance to run (they fire at end-of-body, before rAF).
+function reapplyColours() {
+  var b = document.body;
+  b.style.background = "#0a0a0a";
+  b.style.color       = "#ffffff";
+  document.getElementById("hdr-info").style.color   = "#888888";
+  document.getElementById("bpm").style.color        = "#00ffff";
+  document.getElementById("phrase-n").style.color   = "#ffffff";
+  document.getElementById("harm").style.color       = "#00ffff";
+  document.getElementById("scale").style.color      = "#ffffff";
+  document.getElementById("contour").style.color    = "#ffffff";
+  document.getElementById("vel").style.color        = "#ffffff";
+  document.getElementById("stage-name").style.color = "#ffffff";
+  document.getElementById("stage-rem").style.color  = "#888888";
+  document.getElementById("trigger").style.color    = "#555555";
+}
+requestAnimationFrame(reapplyColours);
+
 buildArc(0);
 connect();
 </script>
