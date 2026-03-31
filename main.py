@@ -46,6 +46,7 @@ from config import (
     SELF_PLAY_CH_A, SELF_PLAY_CH_B,
     TRADE_BEATS_MODE, TRADE_BEATS_MIN,
     TINYURL_TOKEN, TINYURL_ALIAS,
+    CLOUDFLARE_TUNNEL_NAME, CLOUDFLARE_TUNNEL_HOSTNAME,
 )
 
 # Total arc duration in seconds (end of the last stage)
@@ -405,6 +406,8 @@ def main():
             tunnel        = args.tunnel,
             tinyurl_token = TINYURL_TOKEN,
             tinyurl_alias = TINYURL_ALIAS,
+            tunnel_name   = CLOUDFLARE_TUNNEL_NAME,
+            tunnel_host   = CLOUDFLARE_TUNNEL_HOSTNAME,
         )
 
     if osc_out:

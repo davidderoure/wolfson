@@ -402,7 +402,8 @@ class WebAudienceDisplay:
     # -----------------------------------------------------------------------
 
     def start(self, tunnel: bool = False,
-              tinyurl_token: str = "", tinyurl_alias: str = ""):
+              tinyurl_token: str = "", tinyurl_alias: str = "",
+              tunnel_name: str = "", tunnel_host: str = ""):
         """Start the Flask server in a background daemon thread.
 
         Parameters
@@ -418,6 +419,13 @@ class WebAudienceDisplay:
         tinyurl_alias : str
             TinyURL alias to update, e.g. ``"wolfson-live"`` for
             ``tinyurl.com/wolfson-live``.
+        tunnel_name : str
+            Cloudflare named tunnel name (e.g. ``"wolfson"``).  When set,
+            runs ``cloudflared tunnel run <name>`` for a stable URL instead
+            of a random trycloudflare.com quick tunnel.
+        tunnel_host : str
+            Stable hostname for the named tunnel, e.g.
+            ``"wolfson.numbersintonotes.net"``.
         """
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
@@ -426,7 +434,8 @@ class WebAudienceDisplay:
         print(f"Audience display (local):   {url}")
         print(f"  Share with audience on the same WiFi network.")
         if tunnel:
-            self._start_tunnel(self._port, tinyurl_token, tinyurl_alias)
+            self._start_tunnel(self._port, tinyurl_token, tinyurl_alias,
+                               tunnel_name, tunnel_host)
 
     def _wait_for_flask(self, port: int, timeout: float = 10.0):
         """Block until Flask is accepting connections, or timeout expires."""
@@ -443,12 +452,37 @@ class WebAudienceDisplay:
         return False                 # timed out
 
     def _start_tunnel(self, port: int,
-                      tinyurl_token: str = "", tinyurl_alias: str = ""):
-        """Launch cloudflared and print the public trycloudflare.com URL."""
-        # Wait for Flask to be ready before cloudflared tries to connect,
-        # to avoid Cloudflare Error 1033 (origin unreachable on first request).
+                      tinyurl_token: str = "", tinyurl_alias: str = "",
+                      tunnel_name: str = "", tunnel_host: str = ""):
+        """Launch cloudflared tunnel (named or quick) in a background thread."""
         if not self._wait_for_flask(port):
             print("  Warning: Flask did not become ready — tunnel may show Error 1033")
+
+        if tunnel_name:
+            self._start_named_tunnel(tunnel_name, tunnel_host)
+        else:
+            self._start_quick_tunnel(port, tinyurl_token, tinyurl_alias)
+
+    def _start_named_tunnel(self, name: str, host: str):
+        """Run a pre-configured named tunnel (stable URL, no URL parsing needed)."""
+        try:
+            proc = subprocess.Popen(
+                ["cloudflared", "tunnel", "run", name],
+                stdout = subprocess.DEVNULL,
+                stderr = subprocess.DEVNULL,
+            )
+            self._tunnel_proc = proc
+        except FileNotFoundError:
+            print("  cloudflared not found — install with:")
+            print("    brew install cloudflare/cloudflare/cloudflared")
+            return
+        url = f"https://{host}" if host else f"(tunnel: {name})"
+        print(f"Audience display (stable):  {url}")
+        print(f"  This URL is permanent — share it before the performance.")
+
+    def _start_quick_tunnel(self, port: int,
+                            tinyurl_token: str = "", tinyurl_alias: str = ""):
+        """Start a trycloudflare.com quick tunnel (random URL each run)."""
         try:
             proc = subprocess.Popen(
                 ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
@@ -476,8 +510,7 @@ class WebAudienceDisplay:
                     if tinyurl_token and tinyurl_alias:
                         self._update_tinyurl(tunnel_url, tinyurl_token, tinyurl_alias)
                     break
-            # Drain remaining stderr so the pipe buffer never fills
-            for _ in proc.stderr:
+            for _ in proc.stderr:   # drain to prevent buffer fill
                 pass
 
         threading.Thread(target=_read_stderr, daemon=True).start()

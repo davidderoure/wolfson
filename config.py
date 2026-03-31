@@ -38,6 +38,16 @@ REST_PITCH = -1                # sentinel: a note dict with this pitch = silence
 # or in an unusual register. 0 = no hint (estimator uses its running average).
 TEMPO_HINT_BPM = 0
 
+# Cloudflare Named Tunnel (optional — stable URL across runs)
+# Create once with:
+#   cloudflared tunnel login
+#   cloudflared tunnel create wolfson
+#   cloudflared tunnel route dns wolfson wolfson.numbersintonotes.net
+# Then create ~/.cloudflared/config.yml pointing the hostname at localhost:<web-port>
+# Leave blank to use quick tunnels (random trycloudflare.com URL each run).
+CLOUDFLARE_TUNNEL_NAME     = ""   # e.g. "wolfson"
+CLOUDFLARE_TUNNEL_HOSTNAME = ""   # e.g. "wolfson.numbersintonotes.net"
+
 # TinyURL integration (optional)
 # When set, Wolfson automatically updates a fixed TinyURL alias to point to
 # the current trycloudflare.com URL each run, so the audience always gets
