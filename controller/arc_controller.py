@@ -54,6 +54,18 @@ class ArcController:
         self._last_bass_time = time.time()
         self._last_sax_time  = time.time()
 
+    def reset(self):
+        """Reset arc timing and harmonic state for a new loop iteration.
+        Memory is cleared separately by the caller (PhraseMemory.reset()).
+        """
+        self._start_time         = None
+        self._last_bass_time     = None
+        self._last_sax_time      = None
+        self._last_bass_features = None
+        self._leadership         = "bass"
+        self._harmony            = HarmonyController()
+        self._last_harmonic_stage = None
+
     def elapsed(self) -> float:
         return time.time() - self._start_time if self._start_time else 0.0
 

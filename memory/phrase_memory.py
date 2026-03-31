@@ -67,6 +67,11 @@ class PhraseMemory:
         pool = self._filter(source)
         return [e["phrase"] for e in pool[:n]]
 
+    def reset(self):
+        """Clear all stored phrases and motifs — called between arc loops."""
+        self._phrases = []
+        self._counter = 0
+
     def _filter(self, source):
         if source is None:
             return self._phrases

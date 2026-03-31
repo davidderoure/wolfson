@@ -159,6 +159,16 @@ def main():
         help="Beat-matching mode: sax response matches the bass phrase length "
              "in beats, enabling natural trading of 2s, 4s, or 8s.",
     )
+    parser.add_argument(
+        "--loop", action="store_true", default=False,
+        help="Loop continuously: after each 5-minute arc completes, clear "
+             "memory and start a new arc automatically. Useful for "
+             "installations with multiple users. Ctrl-C to stop.",
+    )
+    parser.add_argument(
+        "--loop-gap", type=float, default=8.0,
+        help="Seconds to pause between arc loops (default: 8).",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
@@ -388,6 +398,40 @@ def main():
     # ------------------------------------------------------------------
 
     _summary_computed = [False]
+    loop_mode = args.loop
+    loop_gap  = args.loop_gap
+
+    def _restart_arc():
+        """Reset state for a new loop iteration and re-seed self-play."""
+        _summary_computed[0] = False
+        _arc_started.clear()
+        memory.reset()
+        arc.reset()
+        if web_out:
+            web_out.reset_summary()
+        if not dashboard:
+            print(f"\nStarting new arc. Gap: {loop_gap:.0f}s.\n")
+        if self_play:
+            def _bootstrap_loop():
+                time.sleep(loop_gap)
+                if not _running.is_set():
+                    return
+                beat_dur = 60.0 / initial_bpm
+                now      = time.time()
+                phrase   = []
+                onset    = 0.0
+                for p, d in zip(_SEED_PITCHES, _SEED_DUR_BEATS):
+                    dur_sec = d * beat_dur
+                    phrase.append({
+                        "pitch":    p,
+                        "velocity": 64,
+                        "onset":    now + onset,
+                        "offset":   now + onset + dur_sec,
+                    })
+                    beats.note_on(now + onset)
+                    onset += dur_sec
+                on_bass_phrase(phrase)
+            threading.Thread(target=_bootstrap_loop, daemon=True).start()
 
     def _proactive_loop():
         while _running.is_set():
@@ -400,8 +444,11 @@ def main():
                 _print_performance_summary(summary)
                 if web_out:
                     web_out.show_summary(summary)
-            # Auto-stop self-play at arc completion (300s)
-            if self_play and elapsed >= ARC_DURATION_SEC:
+                if loop_mode:
+                    _restart_arc()
+                    continue
+            # Auto-stop self-play at arc completion (300s) when not looping
+            if self_play and not loop_mode and elapsed >= ARC_DURATION_SEC:
                 if not dashboard:
                     print("\nArc complete. Stopping.")
                 _running.clear()

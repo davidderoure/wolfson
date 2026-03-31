@@ -691,6 +691,14 @@ class WebAudienceDisplay:
             self._state = dict(self._state)   # shallow copy
             self._state["summary"] = summary
 
+    def reset_summary(self):
+        """Remove the summary from state so browsers return to the live view.
+        Called at the start of a new loop iteration before the arc restarts.
+        """
+        with self._state_lock:
+            self._state = {k: v for k, v in self._state.items() if k != "summary"}
+            self._phrase_count = 0
+
     def update(
         self,
         params:       dict,
