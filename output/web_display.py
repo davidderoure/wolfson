@@ -464,20 +464,17 @@ class WebAudienceDisplay:
             self._start_quick_tunnel(port, tinyurl_token, tinyurl_alias)
 
     def _start_named_tunnel(self, name: str, host: str, port: int = 0):
-        """Run a pre-configured named tunnel (stable URL, no URL parsing needed).
+        """Run a pre-configured named tunnel (stable URL).
 
-        Passes --url so Wolfson controls the port rather than relying on the
-        ingress entry in ~/.cloudflared/config.yml.
+        Uses the tunnel name only — ingress is read from
+        ~/.cloudflared/config.yml which cloudflared tunnel create/login set up.
+        All cloudflared output is printed so problems are immediately visible.
         """
-        cmd = ["cloudflared", "tunnel", "run"]
-        if port:
-            cmd += ["--url", f"http://localhost:{port}"]
-        cmd.append(name)
         try:
             proc = subprocess.Popen(
-                cmd,
-                stdout = subprocess.DEVNULL,
-                stderr = subprocess.PIPE,
+                ["cloudflared", "tunnel", "run", name],
+                stdout = subprocess.PIPE,
+                stderr = subprocess.STDOUT,   # merge stderr into stdout
             )
             self._tunnel_proc = proc
         except FileNotFoundError:
@@ -489,13 +486,12 @@ class WebAudienceDisplay:
         print(f"Audience display (stable):  {url}")
         print(f"  This URL is permanent — share it before the performance.")
 
-        # Log cloudflared errors in background so problems are visible
-        def _log_stderr():
-            for raw in proc.stderr:
+        def _log_output():
+            for raw in proc.stdout:
                 line = raw.decode("utf-8", errors="replace").rstrip()
-                if any(w in line.lower() for w in ("error", "fail", "fatal")):
+                if line:
                     print(f"  [cloudflared] {line}")
-        threading.Thread(target=_log_stderr, daemon=True).start()
+        threading.Thread(target=_log_output, daemon=True).start()
 
     def _start_quick_tunnel(self, port: int,
                             tinyurl_token: str = "", tinyurl_alias: str = ""):
