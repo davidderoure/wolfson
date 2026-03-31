@@ -29,8 +29,8 @@ Biases are calibrated so their combined effect at any step stays musical:
   register gravity  max ~2.0 logits downward push above C5
   register contrast max ~2.25 logits toward opposite register from bass (1.5 × 1.5)
   long-note penalty max ~2.5 logits on duration tokens > 2 beats
-  singable dur bias max ~1.5 logits on quarter-note range tokens (bell curve, scaled by 1−rhythmic_density;
-                    2× momentum boost when rolling mean note dur drops below 0.35 beats)
+  singable dur bias max ~1.8 logits on quarter-note range tokens (bell curve, scaled by 1−rhythmic_density;
+                    2× momentum boost when rolling mean note dur drops below 0.50 beats)
 """
 
 import sys
@@ -139,7 +139,11 @@ MAX_PHRASE_BEATS = 16.0
 # just under a quarter note at 120 BPM).
 # Applied scaled by (1 - rhythmic_density) so it is strongest in lyrical stages
 # (sparse, resolution) and silenced at the busy peak.
-SINGABLE_DUR_STRENGTH = 1.5    # peak logit boost at the bell-curve centre
+SINGABLE_DUR_STRENGTH = 1.8    # peak logit boost at the bell-curve centre
+                               # (raised from 1.5 — analysis showed the LSTM's
+                               # bebop prior at 120 BPM overwhelms the bias;
+                               # +0.3 logits provides meaningful extra pull
+                               # without overriding melodic shape at 60 BPM)
 SINGABLE_DUR_CENTER   = 72     # token ≈ 0.95 beats (quarter note)
 SINGABLE_DUR_WIDTH    = 4.5    # half-width (tokens) — controls how wide the bell is
 
@@ -148,8 +152,17 @@ SINGABLE_DUR_WIDTH    = 4.5    # half-width (tokens) — controls how wide the b
 # the singable_strength is multiplied by BOOST, pulling the next notes back toward
 # longer, more lyrical values.  This clusters long notes into sustained runs rather
 # than scattering them among 16th-note bursts.
+#
+# THRESHOLD raised from 0.35 → 0.50: at 120 BPM the LSTM naturally produces
+# notes averaging ~0.43 beats (8th-note territory), which sat just above the
+# old threshold so the boost barely fired (34% of steps).  0.5 beats ("shorter
+# than a half-beat") fires the boost ~72% of the time at 120 BPM while leaving
+# 60 BPM behaviour essentially unchanged (fires only ~9% there, since 60 BPM
+# notes average 0.85 beats).  The rule reads musically as: "if recent notes
+# have averaged shorter than a half-beat, pull the next one toward a quarter
+# note."
 MELODIC_MOMENTUM_WINDOW    = 4     # rolling window of recent note durations
-MELODIC_MOMENTUM_THRESHOLD = 0.35  # beats — below this mean triggers the boost
+MELODIC_MOMENTUM_THRESHOLD = 0.50  # beats — below this mean triggers the boost
 MELODIC_MOMENTUM_BOOST     = 2.0   # multiplier on singable_strength when triggered
 
 
