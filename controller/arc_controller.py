@@ -256,7 +256,28 @@ class ArcController:
                 ][:1]
                 motif_strength = max(motif_strength, lyrical_strength)
         modal_strength    = _stage_modal_strength(stage)
-        rhythmic_density  = _stage_rhythmic_density(stage)
+
+        # Rhythmic complementarity: blend the arc's stage density with the
+        # reactive complement of the bass phrase's note density.
+        # Dense bass (lots of notes/sec) → sparser sax; sparse bass → busier sax.
+        # A 40% blend keeps the arc's macro shape in control while the sax
+        # still reacts meaningfully to what the bassist is actually playing.
+        REACTIVE_BLEND    = 0.4
+        arc_density       = _stage_rhythmic_density(stage)
+        bass_density_norm = min(1.0, features.get("note_density", 4.0) / 8.0)
+        reactive_density  = 1.0 - bass_density_norm
+        rhythmic_density  = (arc_density * (1.0 - REACTIVE_BLEND)
+                             + reactive_density * REACTIVE_BLEND)
+
+        # Register contrast: steer the sax toward the opposite register from
+        # the bass, so call and response occupy different tonal spaces.
+        # Modulated by ambitus: when the bass covers a wide range there is
+        # less headroom for a clean contrast, so the effect is reduced.
+        stage_contrast        = _stage_register_contrast(stage)
+        bass_ambitus          = features.get("ambitus", 12)
+        ambitus_factor        = max(0.0, 1.0 - bass_ambitus / 24.0)
+        register_contrast_str = stage_contrast * ambitus_factor
+        register_avoid_midi   = features.get("mean_pitch", 60.0)
 
         contour_target = complement_contour(features)
 
@@ -310,7 +331,9 @@ class ArcController:
             "motif_targets":       motif_targets,
             "motif_strength":      motif_strength,
             "modal_strength":      modal_strength,
-            "rhythmic_density":    rhythmic_density,
+            "rhythmic_density":        rhythmic_density,
+            "register_avoid_midi":     register_avoid_midi,
+            "register_contrast_str":   register_contrast_str,
         }
 
 
@@ -464,6 +487,28 @@ def _stage_rhythmic_density(stage: str) -> float:
         "recapitulation":  0.3,
         "resolution":      0.1,
     }.get(stage, 0.5)
+
+
+def _stage_register_contrast(stage: str) -> float:
+    """
+    Base strength of register-contrast bias at each arc stage.
+
+    0.0 = no bias (sax can land anywhere)
+    1.0 = strong push toward the register opposite the bass
+
+    Sparse (dialogue barely begun) and peak (registers intentionally collide
+    for maximum density) get low values.  Building, recapitulation and
+    resolution — where call-and-response clarity matters most — get higher
+    values.  The returned strength is further modulated by the bass ambitus
+    in _build_params, so wide-range bass phrases reduce the effect.
+    """
+    return {
+        "sparse":          0.0,
+        "building":        0.5,
+        "peak":            0.3,
+        "recapitulation":  0.6,
+        "resolution":      0.4,
+    }.get(stage, 0.0)
 
 
 def _stage_modal_strength(stage: str) -> float:

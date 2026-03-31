@@ -105,19 +105,43 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Modal leap bonus** — in modal stages (building and peak), an additional logit boost is applied to P4 (perfect 4th, 5 semitones) and P5 (perfect 5th, 7 semitones) intervals, scaled by a `modal_strength` value set per stage (0.0 at sparse/resolution, 0.6 at building, 1.0 at peak, 0.4 at recapitulation). This reflects the quartal and pentatonic character of modal jazz — the stacked-4ths vocabulary of McCoy Tyner, Herbie Hancock, and Wayne Shorter — which is under-represented in the base LSTM's learned distribution but clearly differentiates modal from tonal playing. Statistical analysis of output MIDI confirmed P4 motion rises from ~7% of intervals at modal_strength=0 to ~21% at modal_strength=1.0, matching the expected interval profile for modal jazz.
 
-**Phrase breathing** — after the LSTM sampling loop, silence sentinels (REST_PITCH = −1) are spliced into the generated phrase with a bell-curve probability distribution: zero at the very start and end of the phrase, peaking at the midpoint (max 15% chance per inter-note gap). Rest duration is drawn from {0.5, 1.0} beats. The MidiOutput layer translates sentinels to `time.sleep()` calls with no MIDI note sent. This models the breathing and phrasing pauses a human saxophonist would naturally insert — continuous eighth-note streams without gaps are musically inauthentic regardless of harmonic accuracy.
+**Stochastic performance thinning** — at the MIDI output stage only, some short notes are randomly dropped before being sent to the instrument. The full generated phrase is already stored in memory and used for motif detection, arc feedback, register-contrast tracking, and self-play seeding — so the system's internal musical intelligence sees the complete intended phrase. Only what the audience hears is thinned. The effect models the small imprecisions of human articulation: a player running a fast passage will occasionally clip a 16th note, especially under pressure or at peak activity. Drop probability scales linearly with note brevity — notes at or above a quarter note (configurable via `THIN_THRESHOLD_BEATS`, default 0.5 beats) are immune; a note of zero duration would have maximum drop probability. The stage schedule reflects musical context:
+
+| Stage | Max drop probability | Rationale |
+|-------|----------------------|-----------|
+| sparse | 0% | Every note is precious when material is thin |
+| building | 10% | Light thinning as runs begin to appear |
+| peak | 15% | Most benefit — fastest passages, most 16th notes |
+| recapitulation | 8% | Lyrical return; long notes dominate anyway |
+| resolution | 5% | Near silence; almost everything is protected |
+
+The first and last pitched notes of every phrase are always protected regardless of duration — dropping the opening note sounds like a missed entry, and losing the final resolution note is harmonically damaging.
+
+**Phrase breathing** — after the LSTM sampling loop, silence sentinels (REST_PITCH = −1) are spliced into the generated phrase with a bell-curve probability distribution: zero at the very start and end of the phrase, peaking at the midpoint (max 15% chance per inter-note gap). Rest duration is drawn from {0.5, 1.0} beats. The MidiOutput layer translates sentinels to `time.sleep()` calls with no MIDI note sent. This models the breathing and phrasing pauses a human saxophonist would naturally insert — continuous eighth-note streams without gaps are musically inauthentic regardless of harmonic accuracy. Together with stochastic performance thinning (see above), these two mechanisms operate at complementary scales: thinning removes individual short notes within a run, while phrase breathing inserts longer silences between melodic fragments, giving the overall phrase a sense of shape and physical breath.
 
 **Singable duration bias** — the LSTM's training data is dominated by 8th and 16th notes, giving it a strong prior toward fast, busy output. To counter this, a bell-curve logit boost is applied to the duration token vocabulary, centred on the quarter-note token (≈ 0.95 beats) with a width of ±4.5 tokens, pulling sampling toward the 0.5–1.7 beat range where sustained, melodic, "singable" lines live. The boost is scaled by `(1 − rhythmic_density)`, so it is strongest in lyrical stages (full strength at resolution, density=0.1) and progressively suppressed toward the busiest stage (density=0.9 at peak). The result is that mid-register quarter-note lines dominate at sparse and resolution stages while the peak can still drive faster runs.
 
-**Rhythmic density** — the arc controller emits a `rhythmic_density` value (0.0 = lyrical, 1.0 = bebop) for each stage, which the generator uses to scale the singable-duration bias inversely. This creates a natural busyness gradient across the arc: sparse and resolution feel spacious and melodic; peak is the most rhythmically active. The value is logged in the console output alongside `modal_strength`.
+**Rhythmic density** — the arc controller emits a `rhythmic_density` value (0.0 = lyrical, 1.0 = bebop) for each stage, which the generator uses to scale the singable-duration bias inversely. This creates a natural busyness gradient across the arc: sparse and resolution feel spacious and melodic; peak is the most rhythmically active.
 
-| Stage | Rhythmic density | Character |
-|-------|-----------------|-----------|
-| sparse | 0.2 | Open, sustained — establish motifs slowly |
-| building | 0.5 | Mixed — lines begin to flow |
-| peak | 0.9 | Fast and active — maximum rhythmic intensity |
-| recapitulation | 0.3 | Lyrical return — recall themes with space |
-| resolution | 0.1 | Slowest — long tones, fading out |
+**Rhythmic complementarity** — the stage-based density is blended (40 %) with the reactive complement of the bass phrase's note density. A dense bass phrase (many notes/second) nudges the sax toward a sparser, more lyrical response; a sparse bass phrase nudges the sax toward busier output. This mimics the way jazz musicians trade density to create textural balance — a walking-bass passage invites long sax tones, while a bassist's terse two-note phrase invites a flowing sax run. The arc's macro shape remains in control (60 % weight) so the piece still follows its planned structure.
+
+| Stage | Arc density | Reactive blend | Character |
+|-------|-------------|----------------|-----------|
+| sparse | 0.2 | 40% of (1 − bass density) | Open, sustained — establish motifs slowly |
+| building | 0.5 | 40% of (1 − bass density) | Mixed — lines begin to flow |
+| peak | 0.9 | 40% of (1 − bass density) | Fast and active — maximum rhythmic intensity |
+| recapitulation | 0.3 | 40% of (1 − bass density) | Lyrical return — recall themes with space |
+| resolution | 0.1 | 40% of (1 − bass density) | Slowest — long tones, fading out |
+
+**Register contrast** — the sax is biased toward the register opposite to the bass, so call and response occupy different tonal spaces. When the bass mean pitch is above C4 (MIDI 60) the sax is nudged downward via logit bias; when the bass is below C4 the sax is nudged upward. The bias is smooth and linear (centred on C4, proportional to distance, clamped at ±1.5 logits), so it nudges the output rather than forcing it. The strength scales with the arc stage and is modulated by the bass phrase's ambitus: a wide-ranging bass line reduces the contrast effect (less headroom for register separation), while a narrow bass phrase allows the full contrast to apply. During the sparse stage the contrast is off (the dialogue is still being established); it is strongest during recapitulation, where registral separation reinforces the return of themes.
+
+| Stage | Register contrast strength | Effect |
+|-------|---------------------------|--------|
+| sparse | 0.0 | Off — dialogue being established |
+| building | 0.5 | Moderate — voices begin to separate |
+| peak | 0.3 | Reduced — registers intentionally collide for density |
+| recapitulation | 0.6 | Strongest — clear registral dialogue on thematic return |
+| resolution | 0.4 | Moderate — spacious separation as the piece fades |
 
 **Phrase length control** — four cooperating mechanisms manage phrase length. A duration-token penalty tensor applies a graduated negative logit bias to tokens above ~2 beats. A bell-curve singable-duration boost raises the floor toward quarter notes (see above). A beat accumulator hard-stops generation once the total accumulated beats reaches `max_phrase_beats` (default `MAX_PHRASE_BEATS = 16`). The arc controller caps `n_notes` at 14, uses stage-scaled multipliers (1.1× / 0.75× for leading/following), and enforces a per-stage minimum phrase length floor (4–8 notes) so even the shortest "following" phrase has enough notes to be musically complete.
 
@@ -451,7 +475,7 @@ wolfson/
 │   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, singable duration bias, rest injection, phrase length control
 │   └── train.py                  Training script
 ├── controller/
-│   ├── arc_controller.py         Arc, leadership, proactive mode, modal_strength + rhythmic_density + swing range schedules, lyrical motif recall
+│   ├── arc_controller.py         Arc, leadership, proactive mode, modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
 │   ├── midi_output.py            Per-note MIDI playback with articulation

@@ -25,6 +25,21 @@ MIN_PHRASE_NOTES = 2           # ignore micro-phrases shorter than this
 # Phrase memory
 MAX_PHRASES_STORED = 64
 
+# Stochastic performance thinning
+# At the MIDI output stage only — the full generated phrase is kept in memory
+# for motif detection, arc feedback, and self-play seeding.  Only what is
+# actually played is thinned, so the system's internal musical intelligence
+# is never degraded.
+#
+# Notes shorter than THIN_THRESHOLD_BEATS are eligible for dropping.
+# Drop probability scales linearly from 0 at the threshold to the stage
+# maximum at zero duration, so very short notes are most vulnerable and
+# quarter-note-length notes are immune.  The first and last pitched notes
+# of every phrase are always protected.
+#
+# Set THIN_THRESHOLD_BEATS = 0.0 to disable thinning entirely.
+THIN_THRESHOLD_BEATS = 0.5   # notes >= this duration (beats) are never dropped
+
 # Generator
 LSTM_HIDDEN_SIZE = 256
 LSTM_NUM_LAYERS = 2

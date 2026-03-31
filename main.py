@@ -47,6 +47,7 @@ from config import (
     TRADE_BEATS_MODE, TRADE_BEATS_MIN,
     TINYURL_TOKEN, TINYURL_ALIAS,
     CLOUDFLARE_TUNNEL_NAME, CLOUDFLARE_TUNNEL_HOSTNAME,
+    THIN_THRESHOLD_BEATS,
 )
 
 # Total arc duration in seconds (end of the last stage)
@@ -243,8 +244,10 @@ def main():
                 motif_targets       = params.get("motif_targets", []),
                 motif_strength      = params.get("motif_strength", 0.0),
                 modal_strength      = params.get("modal_strength", 0.0),
-                rhythmic_density    = params.get("rhythmic_density", 0.5),
-                max_phrase_beats    = params.get("max_phrase_beats", MAX_PHRASE_BEATS),
+                rhythmic_density      = params.get("rhythmic_density", 0.5),
+                max_phrase_beats      = params.get("max_phrase_beats", MAX_PHRASE_BEATS),
+                register_avoid_midi   = params.get("register_avoid_midi", 60.0),
+                register_contrast_str = params.get("register_contrast_str", 0.0),
             )
             if not notes:
                 # Model generated nothing (END_TOKEN sampled immediately).
@@ -300,15 +303,19 @@ def main():
                 osc_out.send_phrase(params, notes, beats.bpm,
                                     arc.elapsed(), triggered_by)
 
-            # Per-note velocities from energy arc (velocity_scale 0.75–1.25)
-            per_note_vel = [
+            # Stochastic performance thinning — drop some short notes at
+            # output only.  Memory and motif detection already used the full
+            # phrase above, so internal musical intelligence is unaffected.
+            played_notes = _thin_phrase(notes, stage=params.get("stage", "building"))
+            played_durs  = [n["duration_beats"] * beat_dur_sec for n in played_notes]
+            played_vel   = [
                 max(40, min(110, int(base_vel * n.get("velocity_scale", 1.0))))
-                for n in notes
+                for n in played_notes
             ]
             midi_out.play_phrase(
-                pitches   = [n["pitch"] for n in notes],
-                durations = durations_sec,
-                velocity  = per_note_vel,
+                pitches   = [n["pitch"] for n in played_notes],
+                durations = played_durs,
+                velocity  = played_vel,
                 channel   = out_channel,
             )
 
@@ -469,6 +476,74 @@ def main():
             listener.stop()
         midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])
         midi_out.stop()
+
+
+# ------------------------------------------------------------------
+# Stochastic performance thinning
+# ------------------------------------------------------------------
+
+# Per-stage maximum drop probability for eligible (short) notes.
+# Zero at sparse — every note is musically precious when material is thin.
+# Rises through building/peak where fast runs benefit most from thinning.
+# Gentle at recap/resolution where lyrical long notes dominate anyway.
+_THIN_STAGE_STRENGTH = {
+    "sparse":          0.00,
+    "building":        0.10,
+    "peak":            0.15,
+    "recapitulation":  0.08,
+    "resolution":      0.05,
+}
+
+
+def _thin_phrase(notes: list, stage: str) -> list:
+    """
+    Return a thinned copy of *notes* for MIDI output only.
+
+    The full phrase is already stored in memory before this is called, so
+    motif detection, arc feedback, and self-play seeding are unaffected.
+
+    Rules:
+      - REST_PITCH sentinels are always kept (they carry timing).
+      - The first and last *pitched* notes are always kept.
+      - Notes with duration_beats >= THIN_THRESHOLD_BEATS are immune.
+      - Eligible notes are dropped with probability that scales linearly
+        from 0 at the threshold down to `stage_strength` at zero duration:
+            p = stage_strength * (1 - dur / THIN_THRESHOLD_BEATS)
+    """
+    import random as _random
+
+    if THIN_THRESHOLD_BEATS <= 0.0:
+        return notes
+
+    strength = _THIN_STAGE_STRENGTH.get(stage, 0.0)
+    if strength == 0.0:
+        return notes
+
+    # Identify indices of pitched notes so we can protect first and last
+    pitched_indices = [i for i, n in enumerate(notes) if n.get("pitch") != REST_PITCH]
+    if len(pitched_indices) < 3:
+        return notes   # phrase too short to thin meaningfully
+
+    protected = {pitched_indices[0], pitched_indices[-1]}
+
+    out = []
+    for i, note in enumerate(notes):
+        if note.get("pitch") == REST_PITCH or i in protected:
+            out.append(note)
+            continue
+
+        dur = note.get("duration_beats", 1.0)
+        if dur >= THIN_THRESHOLD_BEATS:
+            out.append(note)
+            continue
+
+        # Linear drop probability: maximum at dur→0, zero at threshold
+        p_drop = strength * (1.0 - dur / THIN_THRESHOLD_BEATS)
+        if _random.random() >= p_drop:
+            out.append(note)
+        # else: note silently omitted from MIDI output
+
+    return out
 
 
 # ------------------------------------------------------------------

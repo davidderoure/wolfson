@@ -27,6 +27,7 @@ Biases are calibrated so their combined effect at any step stays musical:
   stepwise        0.1 logits on ±1–2 semitone tokens (reduced from 0.4)
   leap incentive  0.3–0.5 logits on 3rd–5th interval tokens
   register gravity  max ~2.0 logits downward push above C5
+  register contrast max ~2.25 logits toward opposite register from bass (1.5 × 1.5)
   long-note penalty max ~2.5 logits on duration tokens > 2 beats
   singable dur bias max ~1.5 logits on quarter-note range tokens (bell curve, scaled by 1−rhythmic_density;
                     2× momentum boost when rolling mean note dur drops below 0.35 beats)
@@ -121,6 +122,13 @@ REGISTER_SLOPE        = 1.5  # additional logit penalty per token above pivot
 LONG_NOTE_PENALTY_START = 77   # first duration token to penalise (≈ 2.0 beats)
 LONG_NOTE_PENALTY_STEP  = 0.5  # additional logit penalty per token beyond start
 
+# Register contrast — steers the sax toward the opposite register from the bass.
+# When register_avoid_midi is above C4 (60) the sax is biased downward, and
+# vice-versa.  The per-token bias scales linearly with distance from C4,
+# clamped to ±1.5 logits, then multiplied by this constant and the caller's
+# register_contrast_str (0–1 from the arc controller).
+REGISTER_CONTRAST_STRENGTH = 1.5
+
 # Hard beat accumulator — phrase stops when this many beats have been generated.
 MAX_PHRASE_BEATS = 16.0
 
@@ -179,6 +187,8 @@ class PhraseGenerator:
         modal_strength:      float      = 0.0,
         rhythmic_density:    float      = 0.5,
         max_phrase_beats:    float      = MAX_PHRASE_BEATS,
+        register_avoid_midi: float      = 60.0,
+        register_contrast_str: float    = 0.0,
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
@@ -202,6 +212,11 @@ class PhraseGenerator:
                             MAX_PHRASE_BEATS constant (16 beats).  Pass the bass
                             phrase duration in beats for trading-bars mode so the
                             sax response fills exactly the same span.
+        register_avoid_midi MIDI pitch of the bass mean pitch.  The sax is biased
+                            toward the opposite register: if bass > C4 (60) the sax
+                            is pushed lower; if bass < C4 the sax is pushed higher.
+        register_contrast_str 0–1 strength of the register-contrast bias, set by
+                            the arc controller (0 = sparse/peak, up to 0.6 = recap).
 
         Returns list of {pitch, duration_beats, velocity_scale} dicts.
         velocity_scale is 0.75–1.25; apply to base phrase velocity in the caller.
@@ -301,6 +316,17 @@ class PhraseGenerator:
                     if last_pitch_token >= 0 and consecutive_repeats > 0:
                         tok_logits = _apply_repeat_penalty(
                             tok_logits, last_pitch_token, consecutive_repeats,
+                        )
+
+                    # Register contrast — steer sax toward opposite register
+                    # from the bass so call and response occupy different tonal
+                    # spaces.  Bias is proportional to displacement from C4 in
+                    # the opposite direction, clamped to ±1.5 logits.
+                    if register_contrast_str > 0.0 and abs(register_avoid_midi - 60.0) > 2.0:
+                        tok_logits = _apply_register_contrast_bias(
+                            tok_logits,
+                            register_avoid_midi,
+                            register_contrast_str,
                         )
 
                 elif expecting == "duration":
@@ -713,6 +739,43 @@ def _inject_rests(notes: list[dict]) -> list[dict]:
             })
         out.append(note)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Bias helpers — register contrast
+# ---------------------------------------------------------------------------
+
+def _apply_register_contrast_bias(
+    logits:               torch.Tensor,
+    register_avoid_midi:  float,
+    strength:             float,
+) -> torch.Tensor:
+    """
+    Bias sax pitch tokens toward the register opposite to the bass.
+
+    If the bass mean pitch is above C4 (MIDI 60), the sax is nudged downward;
+    if it is below C4, the sax is nudged upward.  The per-token logit is:
+
+        bias[tok] = contrast_sign * displacement * REGISTER_CONTRAST_STRENGTH * strength
+
+    where displacement = clamp((p_midi - 60) / 12, -1.5, +1.5) and
+    contrast_sign = -1 when bass > C4, +1 when bass < C4.
+
+    This gives a smooth, linear push centred on C4 rather than a hard split,
+    so the overall melodic shape is nudged rather than forced.
+    """
+    from data.encoding import PITCH_MIN
+
+    contrast_sign = -1.0 if register_avoid_midi > 60.0 else 1.0
+    bias          = torch.zeros(VOCAB_SIZE)
+
+    for tok in range(N_PITCHES):
+        p_midi       = PITCH_MIN + tok
+        displacement = (p_midi - 60.0) * contrast_sign / 12.0
+        displacement = max(-1.5, min(1.5, displacement))
+        bias[tok]    = REGISTER_CONTRAST_STRENGTH * strength * displacement
+
+    return logits + bias
 
 
 # ---------------------------------------------------------------------------
