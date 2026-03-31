@@ -472,7 +472,8 @@ class WebAudienceDisplay:
         """
         try:
             proc = subprocess.Popen(
-                ["cloudflared", "tunnel", "run", name],
+                ["cloudflared", "tunnel", "--protocol", "http2",
+                 "run", name],
                 stdout = subprocess.PIPE,
                 stderr = subprocess.STDOUT,   # merge stderr into stdout
             )
@@ -498,7 +499,8 @@ class WebAudienceDisplay:
         """Start a trycloudflare.com quick tunnel (random URL each run)."""
         try:
             proc = subprocess.Popen(
-                ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
+                ["cloudflared", "tunnel", "--protocol", "http2",
+                 "--url", f"http://localhost:{port}"],
                 stdout = subprocess.DEVNULL,
                 stderr = subprocess.PIPE,
             )
