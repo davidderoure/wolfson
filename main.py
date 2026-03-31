@@ -197,7 +197,15 @@ def main():
     # Bass phrase handler (reactive path)
     # ------------------------------------------------------------------
 
+    # Arc is started lazily on the first bass phrase so the web server
+    # and cloudflared tunnel can be running (and the waiting screen shown)
+    # for as long as needed before the performance begins.
+    _arc_started = threading.Event()
+
     def on_bass_phrase(phrase: list[dict]):
+        if not _arc_started.is_set():
+            arc.start()
+            _arc_started.set()
         motifs = extract_interval_motifs(phrase)
         memory.store(phrase, source="bass", motifs=motifs)
         params = arc.on_bass_phrase(phrase)
@@ -403,7 +411,6 @@ def main():
     )
 
     midi_out.start()
-    arc.start()
 
     if dashboard:
         dashboard.start()
@@ -427,7 +434,7 @@ def main():
         # Seed the loop with an opening phrase in a background thread
         # so main() is not blocked before the KeyboardInterrupt handler.
         def _bootstrap():
-            time.sleep(0.2)   # allow arc to initialise
+            time.sleep(0.2)   # brief pause to allow MIDI output to settle
             if not _running.is_set():
                 return
             beat_dur = 60.0 / initial_bpm
