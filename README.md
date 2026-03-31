@@ -29,6 +29,9 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                            bass pitch-class tracking,
                                            energy arc selection,
                                            motif + lyrical motif selection,
+                                           rhythmic density +
+                                            complementarity,
+                                           register contrast scheduling,
                                            stage swing baseline)
                                                  │
                                         HarmonyController
@@ -39,6 +42,7 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                     (LSTM + chord conditioning
                                      + pitch range limits
                                      + register gravity
+                                     + register contrast
                                      + scale pitch bias
                                      + contour steering
                                      + swing/triplet bias
@@ -48,16 +52,24 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                      + motivic development
                                      + voice leading
                                      + modal leap bonus (P4/P5)
+                                     + repetition penalty
                                      + rest injection
                                      + beat accumulator)
-                                                 │
-                               ┌─────────────────┴──────────────────┐
-                          MidiOutput                            OscOutput
-                     (per-note velocity                   (phrase events to
-                      from energy arc)                  TouchDesigner / Max
-                          │                              / Processing etc.)
-                          ▼
-                    Synth (sax voice)
+                                                 │ full phrase
+                          ┌──────────────────────┼───────────────────────┐
+                          │                      │                       │
+                    PhraseMemory         WebAudienceDisplay /      performance
+                  (motifs, recall,          OscOutput               thinning
+                   self-play seed)      (always see the full    (short notes dropped
+                                         intended phrase)        stochastically at
+                                                                  output only)
+                                                                       │
+                                                                  MidiOutput
+                                                              (per-note velocity
+                                                               from energy arc)
+                                                                       │
+                                                                       ▼
+                                                               Synth (sax voice)
 ```
 
 ### Musicality features
