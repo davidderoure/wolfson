@@ -46,6 +46,7 @@ import re
 import socket
 import subprocess
 import threading
+import time
 
 from flask import Flask, Response
 
@@ -419,8 +420,26 @@ class WebAudienceDisplay:
         if tunnel:
             self._start_tunnel(self._port)
 
+    def _wait_for_flask(self, port: int, timeout: float = 10.0):
+        """Block until Flask is accepting connections, or timeout expires."""
+        import urllib.request
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                urllib.request.urlopen(
+                    f"http://localhost:{port}/poll", timeout=1
+                )
+                return True          # Flask is up
+            except Exception:
+                time.sleep(0.2)
+        return False                 # timed out
+
     def _start_tunnel(self, port: int):
         """Launch cloudflared and print the public trycloudflare.com URL."""
+        # Wait for Flask to be ready before cloudflared tries to connect,
+        # to avoid Cloudflare Error 1033 (origin unreachable on first request).
+        if not self._wait_for_flask(port):
+            print("  Warning: Flask did not become ready — tunnel may show Error 1033")
         try:
             proc = subprocess.Popen(
                 ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
