@@ -161,7 +161,9 @@ The first and last pitched notes of every phrase are always protected regardless
 
 **Repetition control** — a growing logit penalty is applied to the most recently played pitch token, starting at −2.5 logits on the first immediate repeat and adding −2.0 for each further consecutive repeat. After three same-pitch notes in a row the penalty reaches −6.5 logits, effectively eliminating a fourth repeat while still permitting occasional passing-tone ornaments. The stepwise bias strength was simultaneously reduced (0.4 → 0.1) to remove a partial cancellation that was blunting the penalty's effect.
 
-**Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase.
+**Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase. The proactive trigger checks every 0.5 seconds; during the sparse stage the sax will initiate after 7.5 seconds of bass silence. If you want to play first, a short two-note figure followed by one second of silence is enough to trigger the first response before the 7.5-second window expires.
+
+**Arc timing** — the 5-minute performance arc starts when you play your first bass phrase, not when the script is launched. This means you can start the script (and the web server) well in advance of the performance without consuming arc time — the system waits silently in a pre-show state until the first note arrives. In self-play mode the arc starts immediately as the bootstrap phrase fires automatically.
 
 ### Performance arc
 
@@ -280,6 +282,7 @@ Audience display (local):   http://192.168.1.42:5000
 ```
 
 The page shows:
+- **Waiting screen** — a full-screen "performance will begin shortly" overlay is shown until the first phrase fires. Audience members who arrive early (or whose browser has a stale page from a previous run) see this screen; it disappears automatically when you play your first note.
 - **Arc progress bar** — five colour-coded segments (sparse grey, building cyan, peak red, recapitulation green, resolution yellow); each segment fills as the performance progresses with the current stage partially highlighted
 - **Stage name** in large type, coloured by stage, with time remaining
 - **BPM** and phrase count as large numbers
@@ -290,6 +293,8 @@ The page shows:
 - Auto-reconnects silently if the connection drops
 
 The page is fully self-contained (no CDN dependencies) and loads instantly on a slow venue connection. State is delivered via 2-second polling — robust through any proxy or Cloudflare tunnel.
+
+**Performance workflow** — start the script a few minutes before the audience arrives so the URL is live and the tunnel is connected. The waiting screen holds until you play; the arc clock does not start until your first bass phrase. Share the URL (or display it on screen) and let the audience connect at their own pace before you begin.
 
 ##### Public tunnel (eduroam / institutional networks)
 
