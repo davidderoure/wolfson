@@ -726,6 +726,12 @@ class WebAudienceDisplay:
         }
 
         with self._state_lock:
+            # Preserve summary if already set — update() may be called after
+            # show_summary() if a self-play feedback phrase fires at arc end,
+            # and we must not lose the summary from the state before the
+            # browser has had a chance to poll for it.
+            if "summary" in self._state:
+                state["summary"] = self._state["summary"]
             self._state = state
 
         with self._subs_lock:
