@@ -123,6 +123,11 @@ _HTML = """\
 <div id="notes"   style="min-height:38px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
 <div id="trigger" style="text-align:center;font-size:.8em;color:#555;padding:6px;letter-spacing:1px">waiting&hellip;</div>
 
+<div id="waiting" style="display:flex;position:fixed;inset:0;background:#0a0a0a;flex-direction:column;align-items:center;justify-content:center;z-index:100">
+  <div style="color:#00ffff;font-size:1.6em;font-weight:bold;letter-spacing:6px;margin-bottom:20px">WOLFSON</div>
+  <div style="color:#444;font-size:.75em;letter-spacing:2px">performance will begin shortly</div>
+</div>
+
 <div id="offline" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:8px 16px;font-size:.75em;color:#888">reconnecting&hellip;</div>
 
 <script>
@@ -236,13 +241,23 @@ function update(state) {
 
 // Polling: fetch /poll every 2 s, update only when phrase_count changes.
 // More robust than SSE through proxies and Cloudflare tunnels.
-var _lastPhrase = -1;
+// _lastStarted tracks whether the performance has begun; the waiting
+// overlay is shown whenever started=false, so stale browsers from a
+// previous run automatically reset to the pre-show screen on the first
+// poll after the script is restarted.
+var _lastPhrase  = -1;
+var _lastStarted = false;
 function poll() {
   fetch("/poll")
     .then(function(r) { return r.json(); })
     .then(function(state) {
       document.getElementById("offline").style.display = "none";
-      if ((state.phrase_count || 0) !== _lastPhrase) {
+      var started = !!state.started;
+      if (started !== _lastStarted) {
+        _lastStarted = started;
+        document.getElementById("waiting").style.display = started ? "none" : "flex";
+      }
+      if (started && (state.phrase_count || 0) !== _lastPhrase) {
         _lastPhrase = state.phrase_count || 0;
         update(state);
       }
@@ -278,7 +293,7 @@ class WebAudienceDisplay:
 
     def __init__(self, port: int = 5000):
         self._port         = port
-        self._state        = {}
+        self._state        = {"started": False}
         self._state_lock   = threading.Lock()
         self._subs         = []    # list[queue.Queue]
         self._subs_lock    = threading.Lock()
@@ -606,6 +621,7 @@ class WebAudienceDisplay:
         ]
 
         state = {
+            "started":        True,
             "elapsed":        elapsed,
             "phrase_count":   self._phrase_count,
             "bpm":            round(bpm, 1),
