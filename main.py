@@ -222,9 +222,34 @@ def main():
     _bass_repeat_count        = [0]      # consecutive identical-phrase count
 
     def _phrase_pitches(phrase: list[dict]) -> tuple:
-        """Return a tuple of pitched note MIDI values for identity comparison."""
+        """Return a tuple of pitched note MIDI values for riff comparison."""
         return tuple(n["pitch"] for n in phrase
                      if n.get("pitch", REST_PITCH) != REST_PITCH)
+
+    def _phrase_matches(a: tuple, b: tuple) -> bool:
+        """
+        Fuzzy phrase identity test for riff/repeat detection.
+
+        Two phrases are considered the same riff if:
+          - Their lengths differ by at most 1 note (handles the occasional
+            extra grace note or missed note at a phrase boundary).
+          - At least (n - 1) of the first n pitch classes match in order,
+            where n = length of the shorter phrase.  One mismatch is
+            allowed to accommodate a note played in a different octave or
+            a single wrong note.
+
+        Pitch class (MIDI % 12) is used rather than absolute MIDI pitch so
+        that the same riff played an octave up or down is still recognised.
+        """
+        if abs(len(a) - len(b)) > 1:
+            return False
+        a_pc = tuple(p % 12 for p in a)
+        b_pc = tuple(p % 12 for p in b)
+        n = min(len(a_pc), len(b_pc))
+        if n == 0:
+            return False
+        matches = sum(x == y for x, y in zip(a_pc[:n], b_pc[:n]))
+        return matches >= n - 1   # tolerate one mismatch
 
     dashboard  = WolfsonDashboard() if use_dashboard else None
     osc_out    = OscOutput(osc_host, args.osc_port) if osc_host else None
@@ -255,7 +280,7 @@ def main():
         # After RIFF_EVOLVE_THRESHOLD repeats the sax shifts from trading
         # to development mode — stronger motif use and directed contour.
         pitches = _phrase_pitches(phrase)
-        if _last_bass_pitches[0] is not None and pitches == _last_bass_pitches[0]:
+        if _last_bass_pitches[0] is not None and _phrase_matches(pitches, _last_bass_pitches[0]):
             _bass_repeat_count[0] += 1
         else:
             _bass_repeat_count[0] = 0
