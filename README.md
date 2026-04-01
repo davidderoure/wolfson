@@ -538,8 +538,11 @@ wolfson/
 ├── tests/
 │   ├── run_tests.py              Automated test suite; writes logs + demo.mid
 │   └── logs/                     Per-test log files (generated)
-└── tools/
-    └── analyse_midi.py           Stage-by-stage duration analysis of self-play MIDI recordings
+├── tools/
+│   └── analyse_midi.py           Stage-by-stage duration analysis of self-play MIDI recordings
+└── docs/
+    ├── wolfson.pdf               Presentation slides (PDF, viewable on GitHub)
+    └── wolfson.pptx              Presentation slides (editable source)
 ```
 
 ## Extending to other instruments
