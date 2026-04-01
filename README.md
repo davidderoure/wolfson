@@ -551,6 +551,10 @@ python generator/train.py --instrument trumpet
 
 Set `DEFAULT_INSTRUMENT = "trumpet"` in `config.py`, or pass `instrument="trumpet"` to `PhraseGenerator`. Families and pitch ranges are in `data/instruments.py`.
 
+## Presentation
+
+A short overview of the Wolfson project: [`docs/wolfson.pdf`](docs/wolfson.pdf)
+
 ## Acknowledgements
 
 Solo transcriptions from the [Weimar Jazz Database](https://jazzomat.hfm-weimar.de/), Jazzomat Research Project, Hochschule für Musik Franz Liszt Weimar.
