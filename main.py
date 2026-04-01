@@ -53,7 +53,9 @@ from config import (
 # Total arc duration in seconds (end of the last stage)
 ARC_DURATION_SEC = max(end for _, end in ARC.values())
 
-PROACTIVE_CHECK_INTERVAL = 0.5   # seconds between proactive checks
+PROACTIVE_CHECK_INTERVAL  = 0.5   # seconds between proactive checks
+RIFF_EVOLVE_THRESHOLD     = 2     # consecutive bass repeats before sax shifts to evolve mode
+                                  # (value of 2 means: original + 2 repeats = 3rd occurrence)
 
 # Phrase statistics summary
 STATS_WINDOW = 8    # rolling window — how many recent phrases are counted
@@ -169,6 +171,15 @@ def main():
         "--loop-gap", type=float, default=8.0,
         help="Seconds to pause between arc loops (default: 8).",
     )
+    parser.add_argument(
+        "--riff-prob", type=float, default=0.0,
+        metavar="P",
+        help="Self-play: probability (0–1) that the bass re-plays its previous "
+             "phrase instead of using the latest sax output. Simulates a "
+             "repeating bass riff or ostinato. After 3+ consecutive repeats "
+             "the sax boosts motivic development and adds contour direction. "
+             "(default: 0.0 = always use latest sax output)",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
@@ -199,6 +210,22 @@ def main():
     # Stored as a one-element list so the closure can mutate it.
     _sp_parity = [0]   # 0 → CH_A, 1 → CH_B; flipped after every phrase
 
+    riff_prob = args.riff_prob if self_play else 0.0
+
+    # Riff / ostinato tracking (self-play only).
+    # _last_injected_bass_notes: the notes most recently fed to on_bass_phrase
+    #   via the self-play loop — stored so they can be re-injected on a riff.
+    # _last_bass_pitches / _bass_repeat_count: detect consecutive repetitions
+    #   so the sax can respond differently once the bass is clearly looping.
+    _last_injected_bass_notes = [None]
+    _last_bass_pitches        = [None]   # tuple of pitches from previous bass phrase
+    _bass_repeat_count        = [0]      # consecutive identical-phrase count
+
+    def _phrase_pitches(phrase: list[dict]) -> tuple:
+        """Return a tuple of pitched note MIDI values for identity comparison."""
+        return tuple(n["pitch"] for n in phrase
+                     if n.get("pitch", REST_PITCH) != REST_PITCH)
+
     dashboard  = WolfsonDashboard() if use_dashboard else None
     osc_out    = OscOutput(osc_host, args.osc_port) if osc_host else None
     web_out    = WebAudienceDisplay(port=args.web_port) if use_web else None
@@ -223,9 +250,37 @@ def main():
         for n in phrase:
             if "beat_dur_sec" not in n:
                 n["beat_dur_sec"] = bds
+
+        # Track consecutive bass phrase repetitions.
+        # After RIFF_EVOLVE_THRESHOLD repeats the sax shifts from trading
+        # to development mode — stronger motif use and directed contour.
+        pitches = _phrase_pitches(phrase)
+        if _last_bass_pitches[0] is not None and pitches == _last_bass_pitches[0]:
+            _bass_repeat_count[0] += 1
+        else:
+            _bass_repeat_count[0] = 0
+        _last_bass_pitches[0] = pitches
+
         motifs = extract_interval_motifs(phrase)
         memory.store(phrase, source="bass", motifs=motifs)
         params = arc.on_bass_phrase(phrase)
+
+        # Riff evolution: once the bass has repeated the same phrase
+        # RIFF_EVOLVE_THRESHOLD times in a row, boost the sax's motivic
+        # development and push contour away from neutral so the response
+        # clearly evolves rather than trading the same lick back.
+        repeat = _bass_repeat_count[0]
+        if repeat >= RIFF_EVOLVE_THRESHOLD:
+            boost = min(0.4, 0.15 * (repeat - RIFF_EVOLVE_THRESHOLD + 1))
+            params["motif_strength"] = min(1.0,
+                params.get("motif_strength", 0.0) + boost)
+            if params.get("contour_target", "neutral") == "neutral":
+                params["contour_target"] = (
+                    "ascending" if repeat % 2 == 0 else "descending")
+            if not dashboard:
+                print(f"  [riff ×{repeat + 1}  motif_str→{params['motif_strength']:.2f}"
+                      f"  contour→{params['contour_target']}]")
+
         if trade_mode and len(phrase) >= 2:
             # Measure the bass phrase in beats and cap the sax response to
             # the same length — enabling natural trading of 2s, 4s, or 8s.
@@ -366,7 +421,25 @@ def main():
         """
         Inject sax notes back as a bass phrase in a new daemon thread.
         A short gap simulates the silence between phrases.
+
+        With --riff-prob > 0 the feedback occasionally re-injects the
+        *previous* bass phrase instead of the latest sax output, simulating
+        a repeating bass riff or ostinato.  The repetition counter in
+        on_bass_phrase() then detects how many times the same phrase has
+        appeared and boosts the sax's motivic development accordingly.
         """
+        import random as _rnd
+
+        # Decide which notes to inject before spawning the thread so the
+        # random choice is made at scheduling time, not after the sleep.
+        source_notes = notes
+        if riff_prob > 0.0 and _last_injected_bass_notes[0] is not None:
+            if _rnd.random() < riff_prob:
+                source_notes = _last_injected_bass_notes[0]
+
+        # Record what is actually being injected (for the next riff decision).
+        _last_injected_bass_notes[0] = source_notes
+
         def _run():
             time.sleep(SELF_PLAY_PHRASE_GAP)
             if not _running.is_set():
@@ -374,7 +447,7 @@ def main():
             now    = time.time()
             phrase = []
             onset  = 0.0
-            for n in notes:
+            for n in source_notes:
                 dur_sec = n["duration_beats"] * beat_dur_sec
                 if n["pitch"] != REST_PITCH:
                     phrase.append({
@@ -408,6 +481,9 @@ def main():
         _arc_started.clear()
         memory.reset()
         arc.reset()
+        _last_injected_bass_notes[0] = None
+        _last_bass_pitches[0]        = None
+        _bass_repeat_count[0]        = 0
         if web_out:
             web_out.reset_summary()
         if not dashboard:
