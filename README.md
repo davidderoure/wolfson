@@ -389,11 +389,12 @@ Key OSC addresses:
 Pass `--self-play` to run Wolfson autonomously — no MIDI input hardware needed. The sax feeds its own output back as input, creating a continuous generative loop. The 5-minute structural arc still governs the performance.
 
 ```bash
-python main.py --self-play              # 120 BPM
-python main.py --self-play --bpm 90    # set tempo
-python main.py --self-play --dashboard  # with full-screen display
-python main.py --self-play --loop       # loop continuously (new arc after each 5 min)
+python main.py --self-play                          # 120 BPM
+python main.py --self-play --bpm 90                # set tempo
+python main.py --self-play --dashboard             # with full-screen display
+python main.py --self-play --loop                  # loop continuously (new arc after each 5 min)
 python main.py --self-play --loop --loop-gap 10 --web   # installation mode
+python main.py --self-play --bpm 90 --riff-prob 0.6    # bass riff simulation
 ```
 
 The system seeds itself with a short D minor pentatonic motif, then responds to each phrase it generates. Each response seeds the next, so the musical conversation develops and evolves over the full arc. Useful for:
@@ -401,6 +402,9 @@ The system seeds itself with a short D minor pentatonic motif, then responds to 
 - Testing the arc structure and harmonic progression in real time
 - Leaving it running as a generative ambient piece
 - Installation contexts where the system should run unattended and reset automatically
+- Testing how the system responds to a repeating bass riff (`--riff-prob`)
+
+**Riff / ostinato simulation (`--riff-prob`)** — by default the self-play loop always uses the latest sax output as the next bass phrase, producing pure lick trading. With `--riff-prob P` (0.0–1.0), each feedback cycle has probability P of re-injecting the *previous* bass phrase instead, simulating a repeating riff or ostinato. At `--riff-prob 0.6` the bass typically repeats one or two times before changing; at `1.0` the bass never changes (pure ostinato). Once the same phrase has appeared **3 times in a row**, the sax enters development mode: motivic strength is boosted and the contour is pushed away from neutral, so the response clearly evolves rather than trading the same lick back. The console logs `[riff ×N ...]` whenever this threshold is crossed. Riff state resets cleanly between `--loop` iterations.
 
 **Two-channel dialogue** — phrases automatically alternate between MIDI channel 1 and MIDI channel 2, making the call-and-response structure directly visible in a DAW and directly audible if the two channels are routed to different sounds.
 
