@@ -487,17 +487,29 @@ Outputs:
 
 ## Analysis tools
 
-`tools/analyse_midi.py` parses self-play MIDI recordings and prints per-stage note duration statistics for the melody channel, used to verify that the arc creates audible stage differentiation at different tempos.
+`tools/analyse_midi.py` parses self-play MIDI recordings and prints per-stage note duration statistics for the melody channel, used to verify that the arc creates audible stage differentiation at different tempos and riff probabilities.
 
 ```bash
 # Single file
 python tools/analyse_midi.py /path/to/recording.mid
 
-# Side-by-side comparison across tempos
+# Side-by-side comparison across tempos or runs
 python tools/analyse_midi.py 60bpm.mid 90bpm.mid 120bpm.mid
+
+# Time-series plot (requires matplotlib)
+python tools/analyse_midi.py a.mid b.mid --plot
+python tools/analyse_midi.py a.mid b.mid --plot --plot-out comparison.png
 ```
 
 For each stage (sparse / building / peak / recapitulation / resolution) it reports note count, mean duration, median duration, short% (< 0.4 beats) and long% (≥ 0.75 beats). A summary comparison table is printed when multiple files are given.
+
+`--plot` generates a three-panel PNG showing rolling-window curves (40-second window, 10-second step) plotted against the full 5-minute arc time axis, with stage regions colour-shaded and one line per input file:
+
+- **Mean note duration** (beats) — lyrical quality; rises toward the peak stage as the arc drives longer motifs
+- **Short note %** — busyness; inversely mirrors mean duration
+- **Note rate** (notes/min) — absolute activity level across the arc
+
+Multiple files on the same plot makes it straightforward to compare different tempos, different `--riff-prob` settings, or repeated runs at the same tempo to see how much the output varies.
 
 ## Project structure
 
