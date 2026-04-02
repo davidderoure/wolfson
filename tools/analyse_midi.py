@@ -60,11 +60,19 @@ STEP_SECS   = 10.0   # spacing between window centres
 # Analysis
 # ---------------------------------------------------------------------------
 
-def analyse_file(path: Path, arc_secs: float = 300.0) -> dict:
-    """Return per-stage stats and raw note list for the melody channel."""
+def analyse_file(path: Path, arc_secs: float = 300.0,
+                 bpm_override: float = None) -> dict:
+    """Return per-stage stats and raw note list for the melody channel.
+
+    bpm_override — if provided, use this BPM for arc-beat calculations
+    instead of the tempo embedded in the MIDI file.  Useful when the DAW
+    has overwritten the file's tempo track with its own project tempo
+    (e.g. Logic always records with its project BPM regardless of the
+    --bpm flag passed to Wolfson).
+    """
     mid = mido.MidiFile(str(path))
 
-    # Resolve tempo
+    # Resolve tempo from file, then optionally override
     tempo_us = 500_000  # default 120 bpm
     for track in mid.tracks:
         for msg in track:
@@ -75,7 +83,8 @@ def analyse_file(path: Path, arc_secs: float = 300.0) -> dict:
             continue
         break
 
-    bpm        = 60_000_000 / tempo_us
+    bpm_from_file = 60_000_000 / tempo_us
+    bpm           = bpm_override if bpm_override is not None else bpm_from_file
     ticks_beat = mid.ticks_per_beat
     arc_beats  = arc_secs * (bpm / 60.0)
     secs_beat  = 60.0 / bpm
@@ -130,9 +139,10 @@ def analyse_file(path: Path, arc_secs: float = 300.0) -> dict:
     overall     = stats(all_durs)
 
     return {
-        "path":      path,
-        "bpm":       bpm,
-        "n_notes":   len(notes),
+        "path":         path,
+        "bpm":          bpm,
+        "bpm_from_file": bpm_from_file,
+        "n_notes":      len(notes),
         "stages":    stage_stats,
         "overall":   overall,
         # raw notes for time-series plotting: (start_sec, dur_beats, pitch)
@@ -189,7 +199,10 @@ def print_report(result: dict):
     p = result["path"]
     print(f"\n{'='*70}")
     print(f"  File : {p.name}")
-    print(f"  BPM  : {result['bpm']:.1f}   Total melody notes: {result['n_notes']}")
+    bpm_note = ""
+    if result["bpm"] != result["bpm_from_file"]:
+        bpm_note = f"  (MIDI file: {result['bpm_from_file']:.0f} — overridden)"
+    print(f"  BPM  : {result['bpm']:.1f}{bpm_note}   Total melody notes: {result['n_notes']}")
     print(f"{'='*70}")
 
     header = f"  {'Stage':<18} {'N':>4}  {'Mean':>6}  {'Median':>6}  {'Short%':>7}  {'Long%':>6}"
@@ -327,6 +340,10 @@ def main():
                         help="MIDI file(s) to analyse")
     parser.add_argument("--arc-secs", type=float, default=300.0,
                         help="Arc duration in seconds (default 300)")
+    parser.add_argument("--bpm", type=float, default=None,
+                        help="Override the BPM read from the MIDI file. Needed "
+                             "when the DAW (e.g. Logic) records with its own "
+                             "project tempo rather than Wolfson's --bpm value.")
     parser.add_argument("--plot", action="store_true",
                         help="Generate a time-series plot (requires matplotlib)")
     parser.add_argument("--plot-out", type=Path, default=None,
@@ -338,7 +355,7 @@ def main():
         if not f.exists():
             print(f"WARNING: {f} not found, skipping", file=sys.stderr)
             continue
-        r = analyse_file(f, arc_secs=args.arc_secs)
+        r = analyse_file(f, arc_secs=args.arc_secs, bpm_override=args.bpm)
         print_report(r)
         results.append(r)
 
