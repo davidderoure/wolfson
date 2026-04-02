@@ -180,6 +180,19 @@ def main():
              "the sax boosts motivic development and adds contour direction. "
              "(default: 0.0 = always use latest sax output)",
     )
+    parser.add_argument(
+        "--chord-hint", action="store_true",
+        help="Play a short voiced chord on a separate MIDI channel each time "
+             "the harmony changes, making the internal harmonic state directly "
+             "audible. Like a pianist lightly comping the chord at the start "
+             "of each exchange. Use --comp-channel to set the MIDI channel.",
+    )
+    parser.add_argument(
+        "--comp-channel", type=int, default=3,
+        metavar="CH",
+        help="MIDI channel for chord hint playback (default: 3). "
+             "Route this to a piano or pad voice in your DAW.",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
@@ -188,6 +201,8 @@ def main():
     osc_host       = args.osc_host    # None = OSC disabled
     trade_mode     = args.trade
     use_web        = args.web
+    chord_hint     = args.chord_hint
+    comp_channel   = args.comp_channel
 
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
@@ -312,6 +327,16 @@ def main():
             phrase_dur_sec   = phrase[-1]["offset"] - phrase[0]["onset"]
             phrase_beats     = phrase_dur_sec / beats.beat_duration
             params["max_phrase_beats"] = max(TRADE_BEATS_MIN, phrase_beats)
+
+        # Chord hint: play the current chord on a separate MIDI channel so
+        # the internal harmonic state is directly audible during live testing.
+        if chord_hint and midi_out:
+            midi_out.play_chord_hint(
+                params["chord_idx"],
+                beats.beat_duration,
+                channel  = comp_channel,
+            )
+
         _respond(params, triggered_by="bass")
 
     # ------------------------------------------------------------------

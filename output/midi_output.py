@@ -2,7 +2,16 @@
 
 import rtmidi
 import time
+import threading
 from config import MIDI_OUTPUT_PORT, REST_PITCH
+
+# Semitone intervals from root for each chord quality (maj7, dom7, min7, dim7)
+_CHORD_VOICINGS = {
+    0: (0, 4, 7, 11),   # major  →  R  3  5  maj7
+    1: (0, 4, 7, 10),   # dom    →  R  3  5  b7
+    2: (0, 3, 7, 10),   # minor  →  R  b3 5  b7
+    3: (0, 3, 6,  9),   # dim    →  R  b3 b5 bb7
+}
 
 DEFAULT_VELOCITY    = 80
 ARTICULATION_RATIO  = 0.85   # note sounds for this fraction of its slot; rest is silence
@@ -52,6 +61,46 @@ class MidiOutput:
             time.sleep(sound_dur)
             self._midi_out.send_message([0x80 | ch, pitch, 0])
             time.sleep(silence_dur)
+
+    def play_chord_hint(
+        self,
+        chord_idx:    int,
+        beat_dur_sec: float,
+        channel:      int = 3,
+        velocity:     int = 55,
+    ):
+        """
+        Play a voiced 4-note chord on the hint channel in a background thread.
+
+        Fired once per bass phrase to make the internal harmonic state
+        directly audible — like a pianist lightly picking out the chord at
+        the start of each exchange.  The chord sounds for 1.5 beats then
+        releases silently.
+
+        chord_idx    — Wolfson chord index (0–47); NC_INDEX (48) = silent
+        beat_dur_sec — seconds per beat at the current tempo
+        channel      — 1-indexed MIDI channel (default 3)
+        velocity     — MIDI velocity; 55 is a quiet comp
+        """
+        from data.chords import NC_INDEX, N_QUALITIES
+        if chord_idx == NC_INDEX:
+            return
+
+        root_pc  = chord_idx // N_QUALITIES        # 0–11
+        quality  = chord_idx %  N_QUALITIES        # 0–3
+        root_midi = 48 + root_pc                   # C3–B3
+        notes    = [root_midi + i for i in _CHORD_VOICINGS.get(quality, _CHORD_VOICINGS[0])]
+        dur      = beat_dur_sec * 1.5
+        ch       = channel - 1
+
+        def _play():
+            for n in notes:
+                self._midi_out.send_message([0x90 | ch, n, velocity])
+            time.sleep(dur)
+            for n in notes:
+                self._midi_out.send_message([0x80 | ch, n, 0])
+
+        threading.Thread(target=_play, daemon=True).start()
 
     def silence(self, channels=1):
         """
