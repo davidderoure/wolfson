@@ -23,6 +23,20 @@ class PhraseDetector:
     def note_on(self, pitch, velocity, t):
         with self._lock:
             self._cancel_timer()
+            # Enforce monophony: force-close any currently active notes so
+            # that a held note doesn't prevent the silence timer from firing.
+            # This matches the behaviour of a monophonic bass instrument and
+            # means legato playing is handled correctly (previous note ends
+            # when the next begins).  A MIDI keyboard playing a true chord
+            # produces near-zero-duration grace notes, which is harmless.
+            for active_pitch, (onset, vel) in list(self._active_notes.items()):
+                self._current_phrase.append({
+                    "pitch":    active_pitch,
+                    "velocity": vel,
+                    "onset":    onset,
+                    "offset":   t,
+                })
+            self._active_notes.clear()
             self._active_notes[pitch] = (t, velocity)
 
     def note_off(self, pitch, t):
