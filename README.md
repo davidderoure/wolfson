@@ -261,6 +261,7 @@ python main.py
 python main.py --trade          # beat-matching: sax matches bass phrase length
 python main.py --loop           # loop continuously: new arc starts after each 5 minutes
 python main.py --loop --loop-gap 15   # 15-second pause between arcs (default: 8s)
+python main.py --chord-hint     # play voiced chord on channel 3 each phrase
 ```
 
 #### Dashboard
@@ -384,6 +385,27 @@ Key OSC addresses:
 | `/wolfson/phrase/velocity` | i | MIDI velocity (40–110) |
 | `/wolfson/pitches` | i… | One int per note in the phrase |
 
+#### Chord hint
+
+Pass `--chord-hint` to play a short voiced chord on a separate MIDI channel each time the harmony changes — once per bass phrase, at the moment the sax is about to respond. This makes the internal harmonic state directly audible during live testing, like a pianist lightly comping the chord at the start of each exchange.
+
+```bash
+python main.py --chord-hint                      # chord hints on MIDI channel 3 (default)
+python main.py --chord-hint --comp-channel 4     # use channel 4 instead
+python main.py --self-play --chord-hint          # works in self-play too
+```
+
+The chord is voiced as a 4-note close position chord in the C3–F4 register (quiet, unobtrusive):
+
+| Quality | Voicing | Example |
+|---------|---------|---------|
+| major | R  3  5  maj7 | Cmaj → C3 E3 G3 B3 |
+| dominant | R  3  5  b7 | G7 → G3 B3 D4 F4 |
+| minor | R  b3 5  b7 | Dm → D3 F3 A3 C4 |
+| diminished | R  b3 b5 bb7 | Bdim → B3 D4 F4 Ab4 |
+
+The chord sounds for 1.5 beats then releases. No chord is emitted during the sparse opening stage (the system is in free/chromatic mode with no harmonic target). Route the hint channel to a piano or pad voice in your DAW.
+
 #### Self-play mode
 
 Pass `--self-play` to run Wolfson autonomously — no MIDI input hardware needed. The sax feeds its own output back as input, creating a continuous generative loop. The 5-minute structural arc still governs the performance.
@@ -412,12 +434,14 @@ The system seeds itself with a short D minor pentatonic motif, then responds to 
 |---------|---------|-----------------|
 | 1 | Odd (1, 3, 5 …) | Alto sax / higher register |
 | 2 | Even (2, 4, 6 …) | Tenor sax / lower register |
+| 3 | Chord hints (`--chord-hint`) | Piano or pad |
 
 DAW setup (Logic, Ableton, etc.):
 1. Create two software instrument tracks, both receiving from the Wolfson MIDI output port
 2. Set one track to receive channel 1, the other to channel 2
 3. Assign different sounds — contrasting timbres (alto + tenor, oboe + clarinet) make the dialogue most audible
 4. Record-arm both tracks — the call-and-response appears as two separate MIDI regions
+5. Optionally add a third track on channel 3 with a piano or pad sound for chord hints (`--chord-hint`)
 
 The channel numbers are configurable in `config.py` (`SELF_PLAY_CH_A`, `SELF_PLAY_CH_B`). In live-bass mode the sax always plays on channel 1.
 
