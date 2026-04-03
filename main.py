@@ -193,6 +193,16 @@ def main():
         help="MIDI channel for chord hint playback (default: 3). "
              "Route this to a piano or pad voice in your DAW.",
     )
+    parser.add_argument(
+        "--temperature", type=float, default=0.0,
+        metavar="T",
+        help="Offset added to the arc's per-stage generation temperature "
+             "(default: 0.0 = arc defaults unchanged). Positive values make "
+             "the sax more adventurous and unpredictable; negative values make "
+             "it more conservative and idiomatic. Stage defaults range from "
+             "0.70 (resolution) to 1.05 (peak); practical range for this "
+             "offset is roughly -0.3 to +0.3.",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
@@ -203,6 +213,7 @@ def main():
     use_web        = args.web
     chord_hint     = args.chord_hint
     comp_channel   = args.comp_channel
+    temp_offset    = args.temperature
 
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
@@ -365,7 +376,7 @@ def main():
                 seed_phrase         = params["seed"],
                 tempo_bpm           = beats.bpm,
                 n_notes             = params["n_notes"],
-                temperature         = params["temperature"],
+                temperature         = max(0.1, params["temperature"] + temp_offset),
                 contour_target      = params["contour_target"],
                 chord_idx           = params["chord_idx"],
                 swing_bias          = params.get("swing_bias", 0.0),
