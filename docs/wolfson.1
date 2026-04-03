@@ -1,0 +1,209 @@
+.\" Wolfson manual page
+.\" Run with: man ./docs/wolfson.1
+.TH WOLFSON 1 "April 2026" "Wolfson" "User Commands"
+.SH NAME
+wolfson \- interactive jazz improvisation system
+.SH SYNOPSIS
+.B python main.py
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+\fBWolfson\fR listens to live bass input over MIDI, segments it into
+phrases, and responds in real time with generated saxophone lines.
+The musical conversation is governed by a 5-minute structural arc that
+moves through five stages — sparse, building, peak, recapitulation,
+and resolution — modulating harmonic mode, rhythmic density, register
+contrast, and generation temperature as the performance develops.
+.PP
+The system uses an LSTM trained on jazz solo transcriptions from the
+Weimar Jazz Database.  At each phrase boundary the arc controller
+determines harmonic context (free, modal, chord progression, or pedal
+tone), contour target, energy arc, motif recall strength, and swing
+bias, then passes these as generation parameters to the phrase
+generator.  Generated phrases are post-processed with phrase-shape
+dynamics (melodic peak accent and end taper) before playback.
+.PP
+The arc clock starts on the first incoming bass phrase, not at
+launch time, so the script may be started well in advance of the
+performance.
+.SH OPTIONS
+.SS "Input / tempo"
+.TP
+.B \-\-bpm \fIBPM\fR
+Starting tempo for self-play mode (default: 120).
+In live mode tempo is estimated continuously from bass note onsets;
+this option has no effect.
+.SS "Performance modes"
+.TP
+.B \-\-self\-play
+Autonomous mode.  The system feeds its own sax output back as bass
+input, creating a continuous generative loop seeded from a short
+D minor pentatonic motif.  No MIDI hardware required.
+.TP
+.B \-\-trade
+Beat-matching mode.  The sax response is capped to the same length
+in beats as the incoming bass phrase, enabling natural trading of
+2s, 4s, or 8s.
+.TP
+.B \-\-loop
+Loop continuously.  After each 5-minute arc completes, phrase memory,
+arc state, and harmony are reset and a new arc starts automatically.
+Phrase memory and riff state are cleared between iterations so that
+successive users begin with a clean slate.  Use \fBCtrl\-C\fR to stop.
+.TP
+.B \-\-loop\-gap \fISECS\fR
+Pause between arc loops in seconds (default: 8).
+.SS "Generation"
+.TP
+.B \-\-temperature \fIT\fR
+Offset added to the arc's per-stage generation temperature
+(default: 0.0, i.e. arc defaults unchanged).
+Temperature controls how peaked or flat the LSTM's sampling
+distribution is.  Positive values produce more adventurous, less
+predictable lines; negative values produce more idiomatic, conservative
+lines that stay closer to the most probable jazz vocabulary.
+Arc stage defaults range from 0.70 (resolution) to 1.05 (peak);
+the practical range for this offset is approximately \-0.3 to +0.3.
+Temperature is clamped to a minimum of 0.1.
+.TP
+.B \-\-riff\-prob \fIP\fR
+Self-play only.  Probability (0\(en1) that each feedback cycle
+re-injects the previous bass phrase rather than the latest sax output,
+simulating a repeating riff or ostinato (default: 0.0).
+After three or more consecutive identical phrases the sax enters
+development mode: motivic strength is boosted and contour is pushed
+away from neutral.  Repeat detection uses fuzzy pitch-class matching,
+tolerating octave shifts, one extra or missing note, and one wrong note.
+Riff state resets cleanly between \fB\-\-loop\fR iterations.
+.SS "Display"
+.TP
+.B \-\-dashboard
+Enable the full-screen rich terminal dashboard: arc progress bar,
+stage name with time remaining, BPM, phrase count, harmony mode,
+scale source, contour, velocity, and last-phrase note chips.
+Recommended as a personal monitor while performing.
+.TP
+.B \-\-web
+Serve a mobile-optimised audience display page on the local network
+(default port 5000).  Audience members on the same WiFi open
+\fIhttp://<host-ip>:5000\fR in their phone browser — no app required.
+The page shows arc progress, stage, BPM, phrase count, harmony, scale,
+contour, velocity, and last-phrase notes.  At arc completion a
+performance-summary overlay is displayed automatically.
+.TP
+.B \-\-web\-port \fIPORT\fR
+Port for the audience web display (default: 5000).
+On macOS, port 5000 may be occupied by AirPlay Receiver;
+use \-\-web\-port 8080 in that case.
+.TP
+.B \-\-tunnel
+Open a Cloudflare tunnel so the audience display is reachable from
+any network, including eduroam and other institutional networks that
+block inbound connections.  Requires \fBcloudflared\fR to be installed:
+.RS
+.B brew install cloudflare/cloudflare/cloudflared
+.RE
+The public URL is printed at startup alongside the local URL.
+.SS "OSC output"
+.TP
+.B \-\-osc\-host \fIHOST\fR
+Enable UDP/OSC output to \fIHOST\fR.  Every phrase emits a burst of
+messages covering arc stage and progress, tempo, harmony mode, scale
+source, contour, velocity, and pitch list.  Suitable for driving
+visualisations in TouchDesigner, Max/MSP, Processing, or Ableton Live.
+.TP
+.B \-\-osc\-port \fIPORT\fR
+OSC UDP port (default: 9000).
+.SS "Chord hint"
+.TP
+.B \-\-chord\-hint
+Play a short voiced 4-note chord on a separate MIDI channel at the
+start of each phrase, making the internal harmonic state directly
+audible.  The chord sounds for 1.5 beats at a quiet velocity (55)
+then releases.  No chord is emitted during the sparse stage (free/
+chromatic mode).  Useful for live testing and rehearsal.
+.TP
+.B \-\-comp\-channel \fICH\fR
+MIDI channel for chord hint playback (default: 3).
+Route this channel to a piano or pad voice in your DAW.
+.SH "MIDI CHANNELS"
+.TS
+l l l.
+Channel	Content	Suggested voice
+_
+1	Odd-numbered sax phrases (1, 3, 5 …)	Alto sax / higher register
+2	Even-numbered sax phrases (2, 4, 6 …)	Tenor sax / lower register
+3	Chord hints (\fB\-\-chord\-hint\fR)	Piano or pad
+.TE
+.PP
+In live-bass mode all sax phrases are sent on channel 1.
+Channel numbers are configurable in \fIconfig.py\fR
+(\fBSELF_PLAY_CH_A\fR, \fBSELF_PLAY_CH_B\fR).
+.SH "PERFORMANCE ARC"
+.TS
+l l l l.
+Time	Stage	Harmonic mode	Character
+_
+0:00\(en0:45	sparse	free	Chromatic; no harmonic constraints
+0:45\(en2:00	building	modal	D Dorian; groove warming up
+2:00\(en3:15	peak	progression	ii\(enV\(enI / blues; maximum activity
+3:15\(en4:15	recapitulation	modal	Lyrical return; motifs recalled
+4:15\(en5:00	resolution	pedal	Sustained; slow; sax plays final phrase
+.TE
+.PP
+The arc starts on the first incoming bass phrase, not at launch time.
+The algorithm is calibrated for tempos of 55 BPM and above; below this
+threshold note-timing calculations become unreliable.
+.SH EXAMPLES
+.TP
+Live performance, basic:
+.B python main.py
+.TP
+Live performance with dashboard and audience display:
+.B python main.py \-\-dashboard \-\-web \-\-web\-port 8080
+.TP
+Live performance on eduroam with public tunnel:
+.B python main.py \-\-web \-\-web\-port 8080 \-\-tunnel
+.TP
+Live performance with chord hint for rehearsal:
+.B python main.py \-\-chord\-hint
+.TP
+Beat-matching (trading 2s and 4s):
+.B python main.py \-\-trade
+.TP
+Self-play at 90 BPM with riff simulation:
+.B python main.py \-\-self\-play \-\-bpm 90 \-\-riff\-prob 0.6
+.TP
+Self-play with elevated temperature:
+.B python main.py \-\-self\-play \-\-bpm 90 \-\-temperature 0.15
+.TP
+Installation mode (continuous loop, audience display):
+.B python main.py \-\-self\-play \-\-loop \-\-loop\-gap 10 \-\-web
+.TP
+OSC output to TouchDesigner on localhost:
+.B python main.py \-\-osc\-host 127.0.0.1
+.SH FILES
+.TP
+.I models/sax_best.pt
+Trained LSTM model weights (saxophone).
+.TP
+.I models/trumpet_best.pt
+Trained LSTM model weights (trumpet).
+.TP
+.I config.py
+All tunable parameters: MIDI port indices, tempo hint, silence
+threshold, phrase length limits, self-play channel assignments,
+generation temperature, and more.
+.TP
+.I data/processed/sax_sequences.npy
+Prepared training sequences (generated by \fIdata/prepare.py\fR).
+.SH "SEE ALSO"
+.B python demo.py \-\-help
+(feature-level testing without the arc),
+.B python tools/analyse_midi.py \-\-help
+(post-hoc analysis of self-play MIDI recordings).
+.SH NOTES
+Wolfson was created for a performance at Wolfson College, Oxford,
+on 1 May 2026.  Training data from the Weimar Jazz Database,
+Jazzomat Research Project, Hochschule für Musik Franz Liszt Weimar.
+.SH AUTHOR
+David De Roure <david.deroure@oerc.ox.ac.uk>
