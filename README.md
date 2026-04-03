@@ -105,6 +105,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 
 **Dynamics** — the mean MIDI velocity of each bass phrase is tracked and mapped to the sax output velocity, so the sax mirrors the bassist's dynamic level. A stage multiplier modulates this further: sparse and resolution stages are inherently softer; the peak stage pushes louder. Playing quietly draws a quiet response; playing hard drives the sax to match.
 
+**Generation temperature** — the LSTM samples each note token from a probability distribution; temperature controls how peaked or flat that distribution is. The arc varies temperature by stage (0.70 at resolution → 1.05 at peak) to match the structural character of each section. The `--temperature` flag adds an offset to all stage values, shifting the whole curve up or down while preserving the arc's relative shape. Positive values (e.g. `--temperature 0.2`) produce more adventurous, unpredictable lines with wider interval leaps; negative values (e.g. `--temperature -0.2`) produce more idiomatic, conservative lines that stay closer to the most probable jazz vocabulary. Practical range is roughly ±0.3; the value is clamped to a minimum of 0.1 to prevent degenerate greedy decoding.
+
 **Phrase-shape dynamics** — after generation, two post-processing passes give each phrase a natural dynamic arc. First, the highest-pitch note receives a ×1.15 velocity boost (melodic peak accent), reflecting the jazz tendency to push dynamically at the top of a line. Second, the last two pitched notes are tapered to 85% and 70% of their computed velocity (phrase-end taper), simulating breath pressure releasing and giving each phrase a sense of completion rather than an abrupt cutoff. Both passes layer on top of the energy-arc per-note velocity_scale, so they augment rather than override the existing phrase shape.
 
 **Articulation** — each generated note sounds for 85% of its time slot, with a short silence before the next note. A minimum duration floor (0.2 beats, ≈100 ms at 120 BPM) prevents imperceptibly short notes from appearing in dense generated passages.
@@ -262,6 +264,7 @@ python main.py --trade          # beat-matching: sax matches bass phrase length
 python main.py --loop           # loop continuously: new arc starts after each 5 minutes
 python main.py --loop --loop-gap 15   # 15-second pause between arcs (default: 8s)
 python main.py --chord-hint     # play voiced chord on channel 3 each phrase
+python main.py --temperature 0.2   # more adventurous; -0.2 for more conservative
 ```
 
 #### Dashboard
