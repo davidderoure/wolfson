@@ -8,9 +8,10 @@ pitches, velocities, and relative timing. No model loading required.
 
 Usage:
     python tools/echo_bass.py
-    python tools/echo_bass.py --channel 2     # different output channel
-    python tools/echo_bass.py --transpose 12  # octave up
-    python tools/echo_bass.py --delay 0.5     # pause before replay (seconds)
+    python tools/echo_bass.py --channel 2       # different output channel
+    python tools/echo_bass.py --transpose 12    # octave up
+    python tools/echo_bass.py --delay 0.5       # pause before replay (seconds)
+    python tools/echo_bass.py --silence 2.0     # longer gap needed to end phrase
 """
 
 import argparse
@@ -83,6 +84,10 @@ def main():
         "--delay", type=float, default=0.0, metavar="SEC",
         help="Pause before replaying each phrase, seconds (default: 0)",
     )
+    parser.add_argument(
+        "--silence", type=float, default=None, metavar="SEC",
+        help="Silence gap that ends a phrase, seconds (default: SILENCE_THRESHOLD_SEC from config)",
+    )
     args = parser.parse_args()
 
     # --- Output ---
@@ -123,7 +128,10 @@ def main():
             daemon=True,
         ).start()
 
-    detector = PhraseDetector(on_phrase_complete=on_phrase)
+    detector = PhraseDetector(
+        on_phrase_complete=on_phrase,
+        silence_threshold=args.silence,   # None → uses config default
+    )
 
     def on_midi(message, _data=None):
         msg, _dt = message
@@ -146,9 +154,11 @@ def main():
     midi_in.set_callback(on_midi)
     midi_in.ignore_types(sysex=True, timing=True, active_sense=True)
 
+    from config import SILENCE_THRESHOLD_SEC
+    silence = args.silence if args.silence is not None else SILENCE_THRESHOLD_SEC
     print(
         f"\nReady — echoing bass → ch {args.channel}  "
-        f"transpose={args.transpose:+d}  delay={args.delay}s"
+        f"transpose={args.transpose:+d}  delay={args.delay}s  silence={silence}s"
     )
     print("Play bass phrases. Ctrl+C to stop.\n")
 

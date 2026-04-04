@@ -17,8 +17,10 @@ class PhraseDetector:
     left stranded in an un-flushed state.
     """
 
-    def __init__(self, on_phrase_complete):
-        self.on_phrase_complete = on_phrase_complete
+    def __init__(self, on_phrase_complete, silence_threshold=None):
+        self.on_phrase_complete  = on_phrase_complete
+        self._silence_threshold  = silence_threshold if silence_threshold is not None \
+                                   else SILENCE_THRESHOLD_SEC
         self._current_phrase = []
         self._active_notes = {}   # pitch -> (onset, velocity)
         self._timer    = None
@@ -66,7 +68,7 @@ class PhraseDetector:
     # --- Silence timer (fires after note_off) ---
 
     def _start_timer(self):
-        self._timer = threading.Timer(SILENCE_THRESHOLD_SEC, self._flush)
+        self._timer = threading.Timer(self._silence_threshold, self._flush)
         self._timer.daemon = True
         self._timer.start()
 
@@ -79,7 +81,7 @@ class PhraseDetector:
 
     def _start_watchdog(self, pitch):
         self._watchdog = threading.Timer(
-            SILENCE_THRESHOLD_SEC, self._watchdog_fire, args=(pitch,)
+            self._silence_threshold, self._watchdog_fire, args=(pitch,)
         )
         self._watchdog.daemon = True
         self._watchdog.start()
