@@ -28,6 +28,7 @@ import threading
 import time
 from collections import Counter, deque
 
+from data.chords             import chord_index_to_name
 from input.midi_listener    import MidiListener
 from input.phrase_detector  import PhraseDetector
 from input.phrase_analyzer  import analyze, extract_interval_motifs, extract_lyrical_motifs
@@ -975,10 +976,11 @@ def _log(params: dict, triggered_by: str, notes: list, bpm: float,
     density = params.get("rhythmic_density", 0.5)
     mpb     = params.get("max_phrase_beats")
     mpb_str = f"  cap={mpb:.1f}b" if mpb is not None else ""
+    chord   = chord_index_to_name(params.get("chord_idx", 48))
     print(
         f"[{stage:>14s}]  {bpm:5.1f} bpm  ch={channel}  lead={lead:<3s}  "
         f"trigger={triggered_by:<4s}  mode={mode:<8s}  "
-        f"harm={harm:<12s}  scale={src:<5s}  arc={arc:<9s}  "
+        f"chord={chord:<5s}  harm={harm:<12s}  scale={src:<5s}  arc={arc:<9s}  "
         f"motifs={motifs}  contour={contour:<10s}  vel={vel:3d}  "
         f"modal={modal:.1f}  density={density:.1f}  n={len(notes)}{mpb_str}"
     )
