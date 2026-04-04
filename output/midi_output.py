@@ -15,6 +15,8 @@ _CHORD_VOICINGS = {
 
 DEFAULT_VELOCITY    = 80
 ARTICULATION_RATIO  = 0.85   # note sounds for this fraction of its slot; rest is silence
+MAX_NOTE_DUR        = 5.0    # hard cap (seconds) — prevents runaway stuck notes if the
+                             # LSTM emits a max-length token near the 55 BPM floor
 
 
 class MidiOutput:
@@ -57,6 +59,7 @@ class MidiOutput:
                     continue
                 vel         = velocity[i] if isinstance(velocity, list) else velocity
                 vel         = max(1, min(127, int(vel)))
+                dur         = min(dur, MAX_NOTE_DUR)
                 sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
                 silence_dur = max(0.005, dur - sound_dur)
                 active_pitch = pitch
