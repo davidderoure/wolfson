@@ -73,6 +73,17 @@ def play_phrase(midi_out, phrase, channel, transpose, delay):
 
 
 # ---------------------------------------------------------------------------
+# MIDI housekeeping
+# ---------------------------------------------------------------------------
+
+def all_notes_off(midi_out):
+    """Send All Notes Off (CC 123) and All Sound Off (CC 120) on every channel."""
+    for ch in range(16):
+        midi_out.send_message([0xB0 | ch, 123, 0])   # All Notes Off
+        midi_out.send_message([0xB0 | ch, 120, 0])   # All Sound Off
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -109,6 +120,7 @@ def main():
         print(f"\nERROR: MIDI_OUTPUT_PORT={MIDI_OUTPUT_PORT} not available.")
         sys.exit(1)
     midi_out.open_port(MIDI_OUTPUT_PORT)
+    all_notes_off(midi_out)   # clear any notes left over from a previous run
 
     # --- Input ---
     midi_in  = rtmidi.MidiIn()
@@ -176,6 +188,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        all_notes_off(midi_out)   # silence anything still sounding
         midi_in.close_port()
         midi_out.close_port()
         print("\nStopped.")
