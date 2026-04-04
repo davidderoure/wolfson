@@ -171,7 +171,7 @@ The first and last pitched notes of every phrase are always protected regardless
 
 **Loop mode** — pass `--loop` to restart the arc automatically at the end of each 5-minute performance. PhraseMemory is cleared and the ArcController and HarmonyController are reset between loops, so each arc is a clean slate — appropriate for installations where different users may play in succession. The end-of-arc performance summary is shown before the gap, then the live view resumes automatically. `--loop-gap` sets the pause between arcs (default 8 seconds). In self-play mode the seed phrase re-fires after the gap; in live mode the arc waits for your first bass note.
 
-**Arc timing** — the 5-minute performance arc starts when you play your first bass phrase, not when the script is launched. This means you can start the script (and the web server) well in advance of the performance without consuming arc time — the system waits silently in a pre-show state until the first note arrives. In self-play mode the arc starts immediately as the bootstrap phrase fires automatically.
+**Arc timing** — the 5-minute performance arc starts when you play your first bass phrase, not when the script is launched. This means you can start the script (and the web server) well in advance of the performance without consuming arc time — the system waits silently in a pre-show state until the first note arrives. In self-play mode the arc starts immediately as the bootstrap phrase fires automatically. With `--auto-start` the arc also starts immediately on launch, enabling Wolfson to open the performance proactively before you play.
 
 ### Performance arc
 
@@ -421,7 +421,7 @@ Key OSC addresses:
 
 #### Chord hint
 
-Pass `--chord-hint` to play a short voiced chord on a separate MIDI channel each time the harmony changes — once per bass phrase, at the moment the sax is about to respond. This makes the internal harmonic state directly audible during live testing, like a pianist lightly comping the chord at the start of each exchange.
+Pass `--chord-hint` to play a short voiced chord on a separate MIDI channel each time the harmony changes — once per phrase (whether triggered by a bass phrase or by the sax playing proactively), at the moment the sax is about to respond. This makes the internal harmonic state directly audible during live testing, like a pianist lightly comping the chord at the start of each exchange.
 
 ```bash
 python main.py --chord-hint                      # chord hints on MIDI channel 3 (default)
@@ -490,7 +490,7 @@ DAW setup (Logic, Ableton, etc.):
 
 The channel numbers are configurable in `config.py` (`SELF_PLAY_CH_A`, `SELF_PLAY_CH_B`). In live-bass mode the sax always plays on channel 1.
 
-Console output logs `ch=N` on every phrase so you can see which voice is speaking. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
+Console output logs `ch=N` and `chord=Xqual` (e.g. `chord=Dm`, `chord=G7`, `chord=NC`) on every phrase so you can see which voice is speaking and what harmony is active. A rolling statistics block is printed every 8 phrases. Use `--dashboard` for the full-screen display.
 
 ## Testing individual features
 
