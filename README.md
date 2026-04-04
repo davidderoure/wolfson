@@ -225,6 +225,36 @@ python test-midi-in.py
 ```
 Play a few notes — you should see `Note ON` and `Note OFF` lines for each. Adjust `MIDI_INPUT_PORT` in `config.py` until events appear, then run `main.py`.
 
+### Input filtering
+
+Three filters in `config.py` clean up signals from pitch-to-MIDI converters before they reach the phrase detector:
+
+```python
+MIDI_PITCH_MIN    = 28    # E1 — discard notes below open E string
+MIDI_PITCH_MAX    = 84    # C6 — discard notes above practical bass range
+MIDI_VELOCITY_MIN = 20    # discard very quiet ghost notes (sympathetic resonance)
+MIDI_MIN_NOTE_DUR = 0.05  # 50 ms — discard sub-50ms glitch notes
+```
+
+The duration filter (`MIDI_MIN_NOTE_DUR`) is particularly important for hardware pitch trackers: analysis of live recordings shows that converters such as the Sonuus i2M produce spurious notes as short as 1–10 ms during pitch transitions, especially on large intervals. Without filtering, these create false phrase boundaries and cause the sax to enter mid-phrase. 50 ms removes the artefacts without affecting any intentional bass playing.
+
+### Warm-up and setup verification
+
+`tools/echo_bass.py` replays each detected bass phrase note-for-note on the sax output channel, with the original pitches, velocities and timing. No model loading is required. It is useful for:
+
+- Confirming MIDI input and output routing end-to-end before starting `main.py`
+- Warming up and checking that phrase detection is working correctly
+- Practising precise articulation (the echo makes timing and note-end clarity immediately audible)
+
+```bash
+python tools/echo_bass.py                      # default settings from config.py
+python tools/echo_bass.py --silence 2.0        # longer gap needed to end a phrase
+python tools/echo_bass.py --delay 1.0          # pause before replaying (call-and-response feel)
+python tools/echo_bass.py --transpose 12       # echo an octave up
+```
+
+Port indices, pitch range, velocity threshold and duration filter are all read from `config.py`. The startup output lists available ports with arrows marking the configured ones.
+
 ## Training
 
 ### 1. Get the data
@@ -578,6 +608,7 @@ wolfson/
 │   ├── run_tests.py              Automated test suite; writes logs + demo.mid
 │   └── logs/                     Per-test log files (generated)
 ├── tools/
+│   ├── echo_bass.py              Echo bass phrases on sax output for setup verification and warm-up
 │   └── analyse_midi.py           Stage-by-stage duration analysis of self-play MIDI recordings
 └── docs/
     ├── wolfson.pdf               Presentation slides (PDF, viewable on GitHub)
