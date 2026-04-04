@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import rtmidi
 
-from config import MIDI_INPUT_PORT, MIDI_OUTPUT_PORT, MIDI_PITCH_MIN, MIDI_PITCH_MAX
+from config import MIDI_INPUT_PORT, MIDI_OUTPUT_PORT, MIDI_PITCH_MIN, MIDI_PITCH_MAX, MIDI_VELOCITY_MIN
 from input.phrase_detector import PhraseDetector
 
 
@@ -136,6 +136,8 @@ def main():
             return
         t = time.time()
         if status == 0x90 and vel > 0:
+            if vel < MIDI_VELOCITY_MIN:
+                return
             detector.note_on(pitch, vel, t)
         elif status == 0x80 or (status == 0x90 and vel == 0):
             detector.note_off(pitch, t)

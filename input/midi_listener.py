@@ -3,7 +3,7 @@
 import rtmidi
 import threading
 import time
-from config import MIDI_INPUT_PORT, MIDI_PITCH_MIN, MIDI_PITCH_MAX
+from config import MIDI_INPUT_PORT, MIDI_PITCH_MIN, MIDI_PITCH_MAX, MIDI_VELOCITY_MIN
 
 
 class MidiListener:
@@ -33,6 +33,8 @@ class MidiListener:
         if not (MIDI_PITCH_MIN <= pitch <= MIDI_PITCH_MAX):
             return
         if status == 0x90 and velocity > 0:
+            if velocity < MIDI_VELOCITY_MIN:
+                return
             self.on_note_on(pitch, velocity, time.time())
         elif status == 0x80 or (status == 0x90 and velocity == 0):
             self.on_note_off(pitch, time.time())

@@ -7,8 +7,16 @@ MIDI_OUTPUT_PORT = 1      # index of synth/output for the sax voice
 # detector. Useful for suppressing sympathetic string resonance from
 # pitch-to-MIDI converters (e.g. Sonuus i2M open-string artefacts).
 # Set 0 / 127 to disable filtering entirely.
-MIDI_PITCH_MIN = 40   # E1 — lowest intentional bass note (open E string, Logic convention)
+MIDI_PITCH_MIN = 28   # E1 — lowest intentional bass note (open E string)
 MIDI_PITCH_MAX = 84   # C6 — well above practical bass range
+
+# MIDI input velocity filter
+# Notes with velocity below this threshold are ignored before reaching the
+# phrase detector. Sympathetic string resonance from pitch-to-MIDI converters
+# (e.g. Sonuus i2M) typically produces ghost notes at very low velocity.
+# Raise this value if spurious notes persist; lower it if quiet intentional
+# notes are being dropped. Set to 0 to disable.
+MIDI_VELOCITY_MIN = 20
 
 # Beat-matching ("trading bars") mode
 # When True, the sax response is capped to the same number of beats as the
