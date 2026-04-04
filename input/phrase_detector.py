@@ -11,18 +11,24 @@ class PhraseDetector:
     exceeds SILENCE_THRESHOLD_SEC.
 
     A phrase is a list of dicts: {pitch, velocity, onset, offset}
+
+    A watchdog timer fires if a note_off is never received for the last note
+    (e.g. dropped by the pitch-to-MIDI converter), so the phrase is never
+    left stranded in an un-flushed state.
     """
 
     def __init__(self, on_phrase_complete):
         self.on_phrase_complete = on_phrase_complete
         self._current_phrase = []
-        self._active_notes = {}   # pitch -> onset time
-        self._timer = None
+        self._active_notes = {}   # pitch -> (onset, velocity)
+        self._timer    = None
+        self._watchdog = None
         self._lock = threading.Lock()
 
     def note_on(self, pitch, velocity, t):
         with self._lock:
             self._cancel_timer()
+            self._cancel_watchdog()
             # Enforce monophony: force-close any currently active notes so
             # that a held note doesn't prevent the silence timer from firing.
             # This matches the behaviour of a monophonic bass instrument and
@@ -38,9 +44,14 @@ class PhraseDetector:
                 })
             self._active_notes.clear()
             self._active_notes[pitch] = (t, velocity)
+            # Watchdog: if no note_off arrives within the silence threshold,
+            # the pitch-to-MIDI converter has dropped it.  Force-close the
+            # note and flush the phrase so it isn't left stranded.
+            self._start_watchdog(pitch)
 
     def note_off(self, pitch, t):
         with self._lock:
+            self._cancel_watchdog()
             if pitch in self._active_notes:
                 onset, velocity = self._active_notes.pop(pitch)
                 self._current_phrase.append({
@@ -52,6 +63,8 @@ class PhraseDetector:
             if not self._active_notes:
                 self._start_timer()
 
+    # --- Silence timer (fires after note_off) ---
+
     def _start_timer(self):
         self._timer = threading.Timer(SILENCE_THRESHOLD_SEC, self._flush)
         self._timer.daemon = True
@@ -61,6 +74,37 @@ class PhraseDetector:
         if self._timer:
             self._timer.cancel()
             self._timer = None
+
+    # --- Watchdog timer (fires if note_off never arrives) ---
+
+    def _start_watchdog(self, pitch):
+        self._watchdog = threading.Timer(
+            SILENCE_THRESHOLD_SEC, self._watchdog_fire, args=(pitch,)
+        )
+        self._watchdog.daemon = True
+        self._watchdog.start()
+
+    def _cancel_watchdog(self):
+        if self._watchdog:
+            self._watchdog.cancel()
+            self._watchdog = None
+
+    def _watchdog_fire(self, pitch):
+        """Force-close a stuck note then start the silence timer."""
+        t = time.time()
+        with self._lock:
+            if pitch in self._active_notes:
+                onset, vel = self._active_notes.pop(pitch)
+                self._current_phrase.append({
+                    "pitch":    pitch,
+                    "velocity": vel,
+                    "onset":    onset,
+                    "offset":   t,
+                })
+            if not self._active_notes:
+                self._start_timer()
+
+    # --- Flush ---
 
     def _flush(self):
         with self._lock:
