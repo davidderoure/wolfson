@@ -41,6 +41,11 @@ def play_phrase(midi_out, phrase, channel, transpose, delay):
         time.sleep(delay)
 
     ch   = channel - 1          # rtmidi uses 0-indexed channels
+
+    # Clear any notes left sounding from the previous phrase before starting.
+    # Logic instruments ignore CC 120/123, so send explicit per-pitch note_offs.
+    all_notes_off(midi_out, channels=[ch])
+
     t0   = phrase[0]["onset"]
     wall = time.time()
 
@@ -76,11 +81,20 @@ def play_phrase(midi_out, phrase, channel, transpose, delay):
 # MIDI housekeeping
 # ---------------------------------------------------------------------------
 
-def all_notes_off(midi_out):
-    """Send All Notes Off (CC 123) and All Sound Off (CC 120) on every channel."""
-    for ch in range(16):
+def all_notes_off(midi_out, channels=None):
+    """Send All Notes Off CC and explicit note_off for every pitch.
+
+    Logic software instruments often ignore CC 120/123; explicit per-pitch
+    note_offs are the only reliable way to silence them.
+    channels: list of 0-indexed channel numbers, or None for all 16.
+    """
+    if channels is None:
+        channels = range(16)
+    for ch in channels:
         midi_out.send_message([0xB0 | ch, 123, 0])   # All Notes Off
         midi_out.send_message([0xB0 | ch, 120, 0])   # All Sound Off
+        for pitch in range(128):
+            midi_out.send_message([0x80 | ch, pitch, 0])
 
 
 # ---------------------------------------------------------------------------
