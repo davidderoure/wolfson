@@ -347,15 +347,6 @@ def main():
             phrase_beats     = phrase_dur_sec / beats.beat_duration
             params["max_phrase_beats"] = max(TRADE_BEATS_MIN, phrase_beats)
 
-        # Chord hint: play the current chord on a separate MIDI channel so
-        # the internal harmonic state is directly audible during live testing.
-        if chord_hint and midi_out:
-            midi_out.play_chord_hint(
-                params["chord_idx"],
-                beats.beat_duration,
-                channel  = comp_channel,
-            )
-
         _respond(params, triggered_by="bass")
 
     # ------------------------------------------------------------------
@@ -438,6 +429,12 @@ def main():
 
             # Update displays and send OSC before playback so receivers
             # can react in sync with the first note.
+            if chord_hint and midi_out:
+                midi_out.play_chord_hint(
+                    params["chord_idx"],
+                    beats.beat_duration,
+                    channel = comp_channel,
+                )
             if dashboard:
                 dashboard.update(params, notes, beats.bpm,
                                  arc.elapsed(), triggered_by)
