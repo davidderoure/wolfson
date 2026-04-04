@@ -10,23 +10,23 @@ Wolfson uses an LSTM trained on jazz solo transcriptions from the [Weimar Jazz D
 
 ```
 Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► PhraseAnalyzer
-                               │                               (contour, density,
-                          BeatEstimator                         Q&A type, swing,
-                         (live tempo)                           dynamics, energy
-                               │                                profile, pitch
-                               │                                classes, interval
-                               │                                motifs, lyrical
-                               │                                motifs)
-                               │                                     │
-                               │                               PhraseMemory
-                               │                            (phrases + motifs
-                               │                             + lyrical motifs,
-                               │                             both voices)
-                               │                                     │
-                               └──────────── ArcController ──────────┘
-                                          (5-min arc, leadership,
-                                           proactive mode,
-                                           bass pitch-class tracking,
+                               │          (pitch range,          (contour, density,
+                          BeatEstimator    velocity min,          Q&A type, swing,
+                         (live tempo)      note dur min)          dynamics, energy
+                               │                                  profile, pitch
+                               │                                  classes, interval
+                               │                                  motifs, lyrical
+                               │                                  motifs)
+                               │                                       │
+                               │                                 PhraseMemory
+                               │                              (phrases + motifs
+                               │                               + lyrical motifs,
+                               │                               both voices)
+                               │                                       │
+                               └──────────── ArcController ────────────┘
+          proactive loop ─────►           (5-min arc, leadership,
+       (silence timer fires                proactive mode,
+        without bass input)                bass pitch-class tracking,
                                            energy arc selection,
                                            motif + lyrical motif selection,
                                            rhythmic density +
@@ -56,22 +56,24 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                      + rest injection
                                      + beat accumulator)
                                                  │ full phrase
-                          ┌──────────────────────┼───────────────────────┐
-                          │                      │                       │
-                    PhraseMemory         WebAudienceDisplay /      performance
-                  (motifs, recall,          OscOutput               thinning
-                   self-play seed)      (always see the full    (short notes dropped
-                                         intended phrase)        stochastically at
-                                                                  output only)
-                                                                       │
-                                                                  MidiOutput
-                                                              (per-note velocity:
-                                                               energy arc ×
-                                                               peak accent ×
-                                                               end taper)
-                                                                       │
-                                                                       ▼
-                                                               Synth (sax voice)
+                     ┌───────────────────────────┼──────────────────────────┐
+                     │                           │                          │
+               PhraseMemory          WebAudienceDisplay /           performance
+             (motifs, recall,        OscOutput / Dashboard            thinning
+              self-play seed)       (always see the full          (short notes dropped
+                                      intended phrase)             stochastically at
+                                                                    output only)
+                                                                         │
+                                                                    MidiOutput
+                                                                (per-note velocity:
+                                                                 energy arc ×
+                                                                 peak accent ×
+                                                                 end taper)
+                                                                ┌─────┴──────┐
+                                                                │            │
+                                                           sax voice    chord hint
+                                                           (ch 1/2)     (ch 3,
+                                                                        --chord-hint)
 ```
 
 ### Musicality features
