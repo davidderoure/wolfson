@@ -606,7 +606,7 @@ def main():
                         print("\nArc complete. Stopping.")
                     _running.clear()
                     break
-            if arc.should_play_proactively():
+            if elapsed < ARC_DURATION_SEC and arc.should_play_proactively():
                 params = arc.get_proactive_params()
                 if params:
                     _respond(params, triggered_by="sax")
