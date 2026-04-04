@@ -619,6 +619,7 @@ def main():
     )
 
     midi_out.start()
+    midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])   # clear any notes from previous run
 
     if dashboard:
         dashboard.start()

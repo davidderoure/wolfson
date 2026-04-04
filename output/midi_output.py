@@ -48,19 +48,27 @@ class MidiOutput:
         short silence before the next note — giving natural sax articulation.
         """
         ch = channel - 1
-        for i, (pitch, dur) in enumerate(zip(pitches, durations)):
-            if pitch == REST_PITCH:
-                # Silence sentinel — just wait, no MIDI output
-                time.sleep(dur)
-                continue
-            vel         = velocity[i] if isinstance(velocity, list) else velocity
-            vel         = max(1, min(127, int(vel)))
-            sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
-            silence_dur = max(0.005, dur - sound_dur)
-            self._midi_out.send_message([0x90 | ch, pitch, vel])
-            time.sleep(sound_dur)
-            self._midi_out.send_message([0x80 | ch, pitch, 0])
-            time.sleep(silence_dur)
+        active_pitch = None
+        try:
+            for i, (pitch, dur) in enumerate(zip(pitches, durations)):
+                if pitch == REST_PITCH:
+                    # Silence sentinel — just wait, no MIDI output
+                    time.sleep(dur)
+                    continue
+                vel         = velocity[i] if isinstance(velocity, list) else velocity
+                vel         = max(1, min(127, int(vel)))
+                sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
+                silence_dur = max(0.005, dur - sound_dur)
+                active_pitch = pitch
+                self._midi_out.send_message([0x90 | ch, pitch, vel])
+                time.sleep(sound_dur)
+                self._midi_out.send_message([0x80 | ch, pitch, 0])
+                active_pitch = None
+                time.sleep(silence_dur)
+        except Exception:
+            # Ensure no note is left sounding if playback is interrupted
+            if active_pitch is not None:
+                self._midi_out.send_message([0x80 | ch, active_pitch, 0])
 
     def play_chord_hint(
         self,
@@ -104,7 +112,11 @@ class MidiOutput:
 
     def silence(self, channels=1):
         """
-        Send all-notes-off on one or more MIDI channels.
+        Silence one or more MIDI channels.
+
+        Sends CC 123 (All Notes Off) and CC 120 (All Sound Off) followed by
+        explicit note_off for every pitch — Logic software instruments ignore
+        the CC messages and only respond to per-pitch note_offs.
 
         channels may be a single int or a list/tuple of ints, e.g.
         ``silence(1)``, ``silence([1, 2])``.
@@ -113,4 +125,7 @@ class MidiOutput:
             channels = [channels]
         for channel in channels:
             ch = channel - 1
-            self._midi_out.send_message([0xB0 | ch, 123, 0])
+            self._midi_out.send_message([0xB0 | ch, 123, 0])   # All Notes Off
+            self._midi_out.send_message([0xB0 | ch, 120, 0])   # All Sound Off
+            for pitch in range(128):
+                self._midi_out.send_message([0x80 | ch, pitch, 0])
