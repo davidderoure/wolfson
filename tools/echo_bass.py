@@ -43,14 +43,16 @@ def play_phrase(midi_out, phrase, channel, transpose, delay):
     if not phrase:
         return
 
-    if delay > 0:
-        time.sleep(delay)
-
     ch = channel - 1            # rtmidi uses 0-indexed channels
 
-    # Clear any notes left sounding from the previous phrase.
+    # Clear any notes left sounding from the previous phrase BEFORE the delay,
+    # so CoreMIDI has time to flush the note_offs before the first note_on.
     # Logic instruments ignore CC 120/123, so send explicit per-pitch note_offs.
     all_notes_off(midi_out, channels=[ch])
+
+    # Always wait at least 50 ms after the note_offs so they are processed
+    # before the first note_on arrives at the instrument.
+    time.sleep(max(delay, 0.05))
 
     t0   = phrase[0]["onset"]
     wall = time.time()
