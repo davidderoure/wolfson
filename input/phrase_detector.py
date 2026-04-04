@@ -66,7 +66,10 @@ class PhraseDetector:
                         "onset": onset,
                         "offset": t,
                     })
-            if not self._active_notes:
+            # Only start the silence timer when there is real phrase content.
+            # A discarded glitch note leaving _active_notes empty must not
+            # prematurely close the phrase — the player is still playing.
+            if not self._active_notes and self._current_phrase:
                 self._start_timer()
 
     # --- Silence timer (fires after note_off) ---
