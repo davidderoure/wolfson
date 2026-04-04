@@ -10,6 +10,13 @@ MIDI_OUTPUT_PORT = 1      # index of synth/output for the sax voice
 MIDI_PITCH_MIN = 28   # E1 — lowest intentional bass note (open E string)
 MIDI_PITCH_MAX = 84   # C6 — well above practical bass range
 
+# Minimum note duration filter
+# Notes shorter than this (in seconds) are discarded before reaching the
+# phrase detector. The Sonuus i2M produces many sub-50ms glitch notes,
+# especially during octave leaps in the bass line; filtering them prevents
+# premature phrase boundaries and audible artefacts in the echo/sax output.
+MIDI_MIN_NOTE_DUR = 0.05   # 50 ms
+
 # MIDI input velocity filter
 # Notes with velocity below this threshold are ignored before reaching the
 # phrase detector. Sympathetic string resonance from pitch-to-MIDI converters
