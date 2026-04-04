@@ -1,6 +1,14 @@
 # MIDI
-MIDI_INPUT_PORT = 0       # index of your bass pitch-to-MIDI interface
+MIDI_INPUT_PORT = 2       # index of your bass pitch-to-MIDI interface
 MIDI_OUTPUT_PORT = 1      # index of synth/output for the sax voice
+
+# MIDI input pitch filter
+# Notes outside this range are silently ignored before reaching the phrase
+# detector. Useful for suppressing sympathetic string resonance from
+# pitch-to-MIDI converters (e.g. Sonuus i2M open-string artefacts).
+# Set 0 / 127 to disable filtering entirely.
+MIDI_PITCH_MIN = 40   # E2 — lowest intentional bass note (open E string)
+MIDI_PITCH_MAX = 84   # C6 — well above practical bass range
 
 # Beat-matching ("trading bars") mode
 # When True, the sax response is capped to the same number of beats as the
