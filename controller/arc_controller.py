@@ -143,6 +143,10 @@ class ArcController:
         """
         Build generation params for a sax-initiated phrase.
         Seed from sax memory (continue its own line) or early bass (recapitulate).
+
+        When memory is empty (e.g. --auto-start before any phrases have been
+        heard), falls back to a short neutral seed so the LSTM can still
+        generate an opening phrase.
         """
         stage = self.stage()
 
@@ -154,7 +158,15 @@ class ArcController:
             seed = seed[0] if seed else self.memory.recall_random("bass")
 
         if seed is None:
-            return None
+            # No memory yet — build a short neutral seed centred on middle C
+            # so the LSTM has something to condition on for the opening phrase.
+            now = time.time()
+            beat = 0.5   # assume a moderate tempo (120 BPM) for the seed
+            seed = [
+                {"pitch": 60, "velocity": 64, "onset": now,          "offset": now + beat},
+                {"pitch": 62, "velocity": 64, "onset": now + beat,   "offset": now + beat * 2},
+                {"pitch": 64, "velocity": 64, "onset": now + beat*2, "offset": now + beat * 3},
+            ]
 
         return self._build_params(seed, analyze(seed), proactive=True)
 

@@ -290,6 +290,7 @@ Best model saved to `models/sax_best.pt`.
 
 ```bash
 python main.py
+python main.py --auto-start     # sax plays proactively before bassist starts
 python main.py --trade          # beat-matching: sax matches bass phrase length
 python main.py --loop           # loop continuously: new arc starts after each 5 minutes
 python main.py --loop --loop-gap 15   # 15-second pause between arcs (default: 8s)
@@ -438,6 +439,17 @@ The chord is voiced as a 4-note close position chord in the C3–F4 register (qu
 | diminished | R  b3 b5 bb7 | Bdim → B3 D4 F4 Ab4 |
 
 The chord sounds for 1.5 beats then releases. No chord is emitted during the sparse opening stage (the system is in free/chromatic mode with no harmonic target). Route the hint channel to a piano or pad voice in your DAW.
+
+#### Auto-start mode
+
+By default the arc starts lazily on the first bass phrase — Wolfson waits for you to play before it does anything. Pass `--auto-start` to invert this: the arc begins immediately on launch and the sax plays proactively as if it were a musician warming up, before you've touched the bass. Once you join in, the normal reactive/proactive interplay takes over.
+
+```bash
+python main.py --auto-start
+python main.py --auto-start --chord-hint   # with chord hints
+```
+
+This is useful for live performance contexts where the audience is watching from the moment Wolfson starts — it opens the show rather than waiting in silence. The first proactive phrase fires after `PROACTIVE_SILENCE_TRIGGER` (3 seconds) with a neutral seed; as soon as you respond, Wolfson has real material to work with and subsequent phrases develop from the emerging musical conversation.
 
 #### Self-play mode
 

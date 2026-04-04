@@ -203,6 +203,13 @@ def main():
              "0.70 (resolution) to 1.05 (peak); practical range for this "
              "offset is roughly -0.3 to +0.3.",
     )
+    parser.add_argument(
+        "--auto-start", action="store_true", default=False,
+        help="Start the arc immediately on launch so the sax plays proactively "
+             "before the bassist plays anything. Without this flag the arc starts "
+             "lazily on the first bass phrase. Use this when you want Wolfson to "
+             "open the performance and have the bassist join in.",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
@@ -670,7 +677,13 @@ def main():
             )
     else:
         listener.start()
-        if not dashboard:
+        if args.auto_start:
+            arc.start()
+            _arc_started.set()
+            if not dashboard:
+                print("Wolfson auto-start: arc running. Sax will play proactively.\n"
+                      "Join in whenever you're ready.\n")
+        elif not dashboard:
             print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
 
     proactive_thread = threading.Thread(target=_proactive_loop, daemon=True)
