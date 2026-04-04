@@ -33,16 +33,22 @@ from input.phrase_detector import PhraseDetector
 # ---------------------------------------------------------------------------
 
 def play_phrase(midi_out, phrase, channel, transpose, delay):
-    """Replay a phrase preserving relative timing and velocity."""
+    """Replay a phrase preserving relative timing and velocity.
+
+    Plays sequentially in the calling thread (which is already a background
+    thread): note_on → sleep → note_off for each note in order.  This avoids
+    the race conditions that arise when note_off daemon threads from one phrase
+    outlive the start of the next phrase.
+    """
     if not phrase:
         return
 
     if delay > 0:
         time.sleep(delay)
 
-    ch   = channel - 1          # rtmidi uses 0-indexed channels
+    ch = channel - 1            # rtmidi uses 0-indexed channels
 
-    # Clear any notes left sounding from the previous phrase before starting.
+    # Clear any notes left sounding from the previous phrase.
     # Logic instruments ignore CC 120/123, so send explicit per-pitch note_offs.
     all_notes_off(midi_out, channels=[ch])
 
@@ -50,7 +56,7 @@ def play_phrase(midi_out, phrase, channel, transpose, delay):
     wall = time.time()
 
     for i, note in enumerate(phrase):
-        # Wait until this note's scheduled time
+        # Wait until this note's scheduled start time
         target = wall + (note["onset"] - t0)
         gap    = target - time.time()
         if gap > 0:
@@ -58,23 +64,20 @@ def play_phrase(midi_out, phrase, channel, transpose, delay):
 
         pitch = max(0, min(127, note["pitch"] + transpose))
         vel   = max(1, min(127, note.get("velocity", 64)))
-
         midi_out.send_message([0x90 | ch, pitch, vel])
 
-        # Note duration: 85% of the recorded duration, but capped at 95% of
-        # the gap to the next note.  This prevents a watchdog-extended offset
-        # from sending a late note_off that silences the following note on a
-        # monophonic synth.
-        raw_dur = (note["offset"] - note["onset"]) * 0.85
+        # Duration: 85% of recorded, capped at 95% of gap to next note so
+        # note_off always clears before the next note_on.  Also capped at
+        # 2 s to prevent watchdog-extended offsets from causing long holds.
+        raw_dur = min((note["offset"] - note["onset"]) * 0.85, 2.0)
         if i + 1 < len(phrase):
             max_dur = (phrase[i + 1]["onset"] - note["onset"]) * 0.95
             dur = min(raw_dur, max_dur)
         else:
             dur = raw_dur
-        def _off(p=pitch, d=dur):
-            time.sleep(max(0.02, d))
-            midi_out.send_message([0x80 | ch, p, 0])
-        threading.Thread(target=_off, daemon=True).start()
+
+        time.sleep(max(0.02, dur))
+        midi_out.send_message([0x80 | ch, pitch, 0])
 
 
 # ---------------------------------------------------------------------------
