@@ -24,6 +24,7 @@ Self-play mode (--self-play):
 """
 
 import argparse
+import random
 import threading
 import time
 from collections import Counter, deque
