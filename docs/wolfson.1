@@ -82,6 +82,19 @@ development mode: motivic strength is boosted and contour is pushed
 away from neutral.  Repeat detection uses fuzzy pitch-class matching,
 tolerating octave shifts, one extra or missing note, and one wrong note.
 Riff state resets cleanly between \fB\-\-loop\fR iterations.
+.TP
+.B \-\-sax\-riff\-prob \fIP\fR
+Probability (0\(en1) that the sax replays its previous phrase verbatim
+instead of generating a new response (default: 0.0).
+The reverse of \fB\-\-riff\-prob\fR: the sax insists on a phrase while
+the bassist is free to develop underneath.
+After two consecutive replays the sax shifts to development mode,
+generating a variation of the repeated phrase with boosted motivic
+strength and a directed contour, so it is heard to evolve its
+insistence rather than loop indefinitely.
+The console logs \fI[sax riff \(muN]\fR on each replay and
+\fI[sax riff \(muN develop ...]\fR when development kicks in.
+Works in both live-bass and self-play modes.
 .SS "Display"
 .TP
 .B \-\-dashboard
@@ -180,6 +193,9 @@ Live performance on eduroam with public tunnel:
 .TP
 Live performance with chord hint for rehearsal:
 .B python main.py \-\-chord\-hint
+.TP
+Sax insistence — sax sometimes repeats to invite bassist to develop:
+.B python main.py \-\-sax\-riff\-prob 0.4
 .TP
 Beat-matching (trading 2s and 4s):
 .B python main.py \-\-trade

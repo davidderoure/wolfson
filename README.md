@@ -169,6 +169,8 @@ The first and last pitched notes of every phrase are always protected regardless
 
 **Repetition control** — a growing logit penalty is applied to the most recently played pitch token, starting at −2.5 logits on the first immediate repeat and adding −2.0 for each further consecutive repeat. After three same-pitch notes in a row the penalty reaches −6.5 logits, effectively eliminating a fourth repeat while still permitting occasional passing-tone ornaments. The stepwise bias strength was simultaneously reduced (0.4 → 0.1) to remove a partial cancellation that was blunting the penalty's effect.
 
+**Sax riff / insistence** — pass `--sax-riff-prob P` to give the sax a probability P of replaying its previous phrase verbatim instead of generating a fresh response. This is the reverse of the bass riff detection: rather than the sax breaking the bassist's loop, the sax insists on its own phrase and invites the bassist to develop underneath. After `SAX_RIFF_EVOLVE_THRESHOLD` (2) consecutive replays the sax shifts to development mode — it generates a *variation* of its repeated phrase with boosted motivic strength and a directed contour, so the sax is heard to evolve its insistence rather than loop indefinitely. The console logs `[sax riff ×N]` on each replay and `[sax riff ×N develop ...]` when development kicks in. Works in both live-bass and self-play modes.
+
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase. The proactive trigger checks every 0.5 seconds; during the sparse stage the sax will initiate after 7.5 seconds of bass silence. If you want to play first, a short two-note figure followed by one second of silence is enough to trigger the first response before the 7.5-second window expires.
 
 **Loop mode** — pass `--loop` to restart the arc automatically at the end of each 5-minute performance. PhraseMemory is cleared and the ArcController and HarmonyController are reset between loops, so each arc is a clean slate — appropriate for installations where different users may play in succession. The end-of-arc performance summary is shown before the gap, then the live view resumes automatically. `--loop-gap` sets the pause between arcs (default 8 seconds). In self-play mode the seed phrase re-fires after the gap; in live mode the arc waits for your first bass note.
@@ -293,6 +295,7 @@ Best model saved to `models/sax_best.pt`.
 ```bash
 python main.py
 python main.py --auto-start     # sax plays proactively before bassist starts
+python main.py --sax-riff-prob 0.4   # sax sometimes insists on a phrase; bassist develops underneath
 python main.py --trade          # beat-matching: sax matches bass phrase length
 python main.py --loop           # loop continuously: new arc starts after each 5 minutes
 python main.py --loop --loop-gap 15   # 15-second pause between arcs (default: 8s)

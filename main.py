@@ -57,6 +57,7 @@ ARC_DURATION_SEC = max(end for _, end in ARC.values())
 PROACTIVE_CHECK_INTERVAL  = 0.5   # seconds between proactive checks
 RIFF_EVOLVE_THRESHOLD     = 2     # consecutive bass repeats before sax shifts to evolve mode
                                   # (value of 2 means: original + 2 repeats = 3rd occurrence)
+SAX_RIFF_EVOLVE_THRESHOLD = 2     # consecutive sax repeats before sax shifts to develop mode
 
 # Phrase statistics summary
 STATS_WINDOW = 8    # rolling window — how many recent phrases are counted
@@ -182,6 +183,18 @@ def main():
              "(default: 0.0 = always use latest sax output)",
     )
     parser.add_argument(
+        "--sax-riff-prob", type=float, default=0.0,
+        metavar="P",
+        help="Probability (0–1) that the sax replays its previous phrase "
+             "instead of generating a new response — the reverse of --riff-prob. "
+             "The sax insists on a phrase while the bassist is free to develop "
+             "underneath. After SAX_RIFF_EVOLVE_THRESHOLD consecutive repeats "
+             "the sax shifts to development mode: it generates a variation of "
+             "its repeated phrase with boosted motivic strength and directed "
+             "contour, rather than looping indefinitely. "
+             "(default: 0.0 = always generate a fresh response)",
+    )
+    parser.add_argument(
         "--chord-hint", action="store_true",
         help="Play a short voiced chord on a separate MIDI channel each time "
              "the harmony changes, making the internal harmonic state directly "
@@ -244,7 +257,8 @@ def main():
     # Stored as a one-element list so the closure can mutate it.
     _sp_parity = [0]   # 0 → CH_A, 1 → CH_B; flipped after every phrase
 
-    riff_prob = args.riff_prob if self_play else 0.0
+    riff_prob     = args.riff_prob if self_play else 0.0
+    sax_riff_prob = args.sax_riff_prob
 
     # Riff / ostinato tracking (self-play only).
     # _last_injected_bass_notes: the notes most recently fed to on_bass_phrase
@@ -254,6 +268,14 @@ def main():
     _last_injected_bass_notes = [None]
     _last_bass_pitches        = [None]   # tuple of pitches from previous bass phrase
     _bass_repeat_count        = [0]      # consecutive identical-phrase count
+
+    # Sax riff tracking (--sax-riff-prob).
+    # _last_sax_notes: the most recently generated sax phrase (beat durations),
+    #   stored so it can be replayed verbatim on a sax riff cycle.
+    # _sax_repeat_count: consecutive sax replays; resets when a fresh phrase
+    #   is generated.
+    _last_sax_notes   = [None]
+    _sax_repeat_count = [0]
 
     def _phrase_pitches(phrase: list[dict]) -> tuple:
         """Return a tuple of pitched note MIDI values for riff comparison."""
@@ -370,25 +392,64 @@ def main():
             if self_play else SELF_PLAY_CH_A
         )
 
+        # Sax riff: decide whether to replay the last phrase or generate fresh.
+        # With probability sax_riff_prob, replay the stored phrase verbatim
+        # (up to SAX_RIFF_EVOLVE_THRESHOLD times).  Once the threshold is
+        # reached, generate a variation instead — boosted motif strength and
+        # directed contour — so the sax is heard to develop its insistence
+        # rather than loop indefinitely.  Reset the counter after any fresh
+        # generation.
+        _sax_replay = (
+            sax_riff_prob > 0.0
+            and _last_sax_notes[0] is not None
+            and random.random() < sax_riff_prob
+            and _sax_repeat_count[0] < SAX_RIFF_EVOLVE_THRESHOLD
+        )
+
+        if _sax_replay:
+            _sax_repeat_count[0] += 1
+            if not dashboard:
+                print(f"  [sax riff ×{_sax_repeat_count[0]}]")
+        else:
+            if _sax_repeat_count[0] >= SAX_RIFF_EVOLVE_THRESHOLD:
+                # Development mode: vary the repeated phrase rather than
+                # abandoning it — mirrors what happens on the bass riff path.
+                boost = min(0.4, 0.15 * (_sax_repeat_count[0]
+                                         - SAX_RIFF_EVOLVE_THRESHOLD + 1))
+                params["motif_strength"] = min(
+                    1.0, params.get("motif_strength", 0.0) + boost)
+                if params.get("contour_target", "neutral") == "neutral":
+                    params["contour_target"] = (
+                        "ascending" if _sax_repeat_count[0] % 2 == 0
+                        else "descending")
+                if not dashboard:
+                    print(f"  [sax riff ×{_sax_repeat_count[0]} develop"
+                          f"  motif_str→{params['motif_strength']:.2f}"
+                          f"  contour→{params['contour_target']}]")
+            _sax_repeat_count[0] = 0
+
         try:
-            notes = generator.generate(
-                seed_phrase         = params["seed"],
-                tempo_bpm           = beats.bpm,
-                n_notes             = params["n_notes"],
-                temperature         = max(0.1, params["temperature"] + temp_offset),
-                contour_target      = params["contour_target"],
-                chord_idx           = params["chord_idx"],
-                swing_bias          = params.get("swing_bias", 0.0),
-                scale_pitch_classes = params.get("scale_pitch_classes"),
-                phrase_energy_arc   = params.get("phrase_energy_arc", "flat"),
-                motif_targets       = params.get("motif_targets", []),
-                motif_strength      = params.get("motif_strength", 0.0),
-                modal_strength      = params.get("modal_strength", 0.0),
-                rhythmic_density      = params.get("rhythmic_density", 0.5),
-                max_phrase_beats      = params.get("max_phrase_beats", MAX_PHRASE_BEATS),
-                register_avoid_midi   = params.get("register_avoid_midi", 60.0),
-                register_contrast_str = params.get("register_contrast_str", 0.0),
-            )
+            if _sax_replay:
+                notes = list(_last_sax_notes[0])
+            else:
+                notes = generator.generate(
+                    seed_phrase         = params["seed"],
+                    tempo_bpm           = beats.bpm,
+                    n_notes             = params["n_notes"],
+                    temperature         = max(0.1, params["temperature"] + temp_offset),
+                    contour_target      = params["contour_target"],
+                    chord_idx           = params["chord_idx"],
+                    swing_bias          = params.get("swing_bias", 0.0),
+                    scale_pitch_classes = params.get("scale_pitch_classes"),
+                    phrase_energy_arc   = params.get("phrase_energy_arc", "flat"),
+                    motif_targets       = params.get("motif_targets", []),
+                    motif_strength      = params.get("motif_strength", 0.0),
+                    modal_strength      = params.get("modal_strength", 0.0),
+                    rhythmic_density      = params.get("rhythmic_density", 0.5),
+                    max_phrase_beats      = params.get("max_phrase_beats", MAX_PHRASE_BEATS),
+                    register_avoid_midi   = params.get("register_avoid_midi", 60.0),
+                    register_contrast_str = params.get("register_contrast_str", 0.0),
+                )
             if not notes:
                 # Model generated nothing (END_TOKEN sampled immediately).
                 # In self-play, re-inject the seed so the loop doesn't stall.
@@ -463,6 +524,7 @@ def main():
             )
 
             notes_out = notes   # capture after successful play
+            _last_sax_notes[0] = notes  # store for potential sax riff replay
 
             # Stats: always recorded; summary printed only in text mode
             _stats.record(params)
@@ -550,6 +612,8 @@ def main():
         _last_injected_bass_notes[0] = None
         _last_bass_pitches[0]        = None
         _bass_repeat_count[0]        = 0
+        _last_sax_notes[0]           = None
+        _sax_repeat_count[0]         = 0
         if web_out:
             web_out.reset_summary()
         if not dashboard:
