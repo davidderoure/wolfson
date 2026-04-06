@@ -56,6 +56,7 @@ class PhraseDetector:
 
     def note_off(self, pitch, t):
         with self._lock:
+            note_was_kept = False
             if pitch in self._active_notes:
                 # This is the note_off for the note the watchdog is guarding.
                 self._cancel_watchdog()
@@ -67,13 +68,23 @@ class PhraseDetector:
                         "onset": onset,
                         "offset": t,
                     })
+                    note_was_kept = True
             # Note_offs for pitches no longer in active_notes are stale —
             # the note was already closed by monophony when the next note
             # started.  Ignore them entirely: cancelling the watchdog here
             # would kill the guard on the *current* note, leaving the phrase
             # stranded if the i2M also drops the current note's note_off.
-            # Only start the silence timer when there is real phrase content.
-            if not self._active_notes and self._current_phrase:
+            #
+            # Only start the silence timer if:
+            #   (a) there are no active notes, AND
+            #   (b) there is real phrase content, AND
+            #   (c) the note that just closed was actually kept (not a ghost).
+            # Condition (c) prevents ghost notes (duration < _min_note_dur)
+            # from resetting the silence-timer anchor mid-phrase: a ghost note
+            # fires note_off almost immediately after note_on, leaving
+            # _active_notes empty and starting a premature 2-second countdown
+            # even though the musician has not actually stopped playing.
+            if not self._active_notes and self._current_phrase and note_was_kept:
                 self._start_timer()
 
     # --- Silence timer (fires after note_off) ---
