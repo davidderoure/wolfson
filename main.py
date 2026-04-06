@@ -517,6 +517,15 @@ def main():
             played_notes = _thin_phrase(notes, stage=params.get("stage", "building"))
             played_durs  = [n["duration_beats"] * beat_dur_sec for n in played_notes]
             played_vel   = _shape_phrase_dynamics(played_notes, base_vel)
+            # On a sax riff replay, apply per-note velocity micro-variation
+            # (±8 MIDI units) so consecutive repeats feel like a live player
+            # rather than a loop.  The jitter is purely at output — the stored
+            # notes used for musical decisions are untouched.
+            if _sax_replay:
+                played_vel = [
+                    max(1, min(127, v + random.randint(-8, 8)))
+                    for v in played_vel
+                ]
             midi_out.play_phrase(
                 pitches   = [n["pitch"] for n in played_notes],
                 durations = played_durs,
