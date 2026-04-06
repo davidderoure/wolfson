@@ -56,8 +56,9 @@ class PhraseDetector:
 
     def note_off(self, pitch, t):
         with self._lock:
-            self._cancel_watchdog()
             if pitch in self._active_notes:
+                # This is the note_off for the note the watchdog is guarding.
+                self._cancel_watchdog()
                 onset, velocity = self._active_notes.pop(pitch)
                 if t - onset >= self._min_note_dur:
                     self._current_phrase.append({
@@ -66,9 +67,12 @@ class PhraseDetector:
                         "onset": onset,
                         "offset": t,
                     })
+            # Note_offs for pitches no longer in active_notes are stale —
+            # the note was already closed by monophony when the next note
+            # started.  Ignore them entirely: cancelling the watchdog here
+            # would kill the guard on the *current* note, leaving the phrase
+            # stranded if the i2M also drops the current note's note_off.
             # Only start the silence timer when there is real phrase content.
-            # A discarded glitch note leaving _active_notes empty must not
-            # prematurely close the phrase — the player is still playing.
             if not self._active_notes and self._current_phrase:
                 self._start_timer()
 
