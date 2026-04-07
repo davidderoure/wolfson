@@ -21,7 +21,14 @@ MAX_NOTE_DUR        = 5.0    # hard cap (seconds) — prevents runaway stuck not
 
 class MidiOutput:
     def __init__(self):
-        self._midi_out = rtmidi.MidiOut()
+        self._midi_out  = rtmidi.MidiOut()
+        # Exclusive-playback sequencing: each call to play_phrase increments
+        # _play_seq and records its own sequence number.  When a newer call
+        # starts it clears the channel and bumps the counter; the older call
+        # detects the mismatch and exits, preventing overlapping note_ons that
+        # would leave polyphonic voices stuck on the synthesiser.
+        self._play_seq  = 0
+        self._seq_lock  = threading.Lock()
 
     def start(self):
         ports = self._midi_out.get_ports()
@@ -32,6 +39,11 @@ class MidiOutput:
 
     def stop(self):
         self._midi_out.close_port()
+
+    def _flush_channel(self, ch: int):
+        """Send note_off for every pitch on a 0-indexed channel."""
+        for pitch in range(128):
+            self._midi_out.send_message([0x80 | ch, pitch, 0])
 
     def play_phrase(
         self,
@@ -48,11 +60,31 @@ class MidiOutput:
 
         Each note sounds for ARTICULATION_RATIO of its slot duration, with a
         short silence before the next note — giving natural sax articulation.
+
+        Only one phrase plays at a time.  If a second call arrives while this
+        one is still running (proactive loop vs bass-response overlap), the new
+        call claims the channel: it flushes all notes and increments the
+        sequence counter.  The old call detects the counter change at the top
+        of its next note iteration and exits cleanly, so no voices are left
+        open on the synthesiser.
         """
         ch = channel - 1
+
+        # Claim this playback slot atomically: bump the counter and flush any
+        # notes left sounding by a previous (possibly still-sleeping) call.
+        with self._seq_lock:
+            self._play_seq += 1
+            my_seq = self._play_seq
+            self._flush_channel(ch)
+
         active_pitch = None
         try:
             for i, (pitch, dur) in enumerate(zip(pitches, durations)):
+                # A newer phrase has started — exit immediately.  The channel
+                # was already flushed by the new call's startup, so no orphan
+                # notes remain.
+                if self._play_seq != my_seq:
+                    return
                 if pitch == REST_PITCH:
                     # Silence sentinel — just wait, no MIDI output
                     time.sleep(dur)
@@ -65,6 +97,11 @@ class MidiOutput:
                 active_pitch = pitch
                 self._midi_out.send_message([0x90 | ch, pitch, vel])
                 time.sleep(sound_dur)
+                # Check again after sleeping — new phrase may have started
+                # during the note.  It will have flushed the channel already,
+                # so skip the note_off (it was already sent) and exit.
+                if self._play_seq != my_seq:
+                    return
                 self._midi_out.send_message([0x80 | ch, pitch, 0])
                 active_pitch = None
                 time.sleep(silence_dur)
