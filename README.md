@@ -12,23 +12,23 @@ Wolfson uses an LSTM trained on jazz solo transcriptions from the [Weimar Jazz D
 Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► PhraseAnalyzer
                                │          (pitch range,          (contour, density,
                           BeatEstimator    velocity min,          Q&A type, swing,
-                         (live tempo)      note dur min)          dynamics, energy
-                               │                                  profile, pitch
+                         (live tempo)      note dur min,          dynamics, energy
+                               │           min phrase notes)      profile, pitch
                                │                                  classes, interval
-                               │                                  motifs, lyrical
-                               │                                  motifs)
-                               │                                       │
-                               │                                 PhraseMemory
+                               │   every note_on:                 motifs, lyrical
+                               │   arc.touch_bass()               motifs)
+                               │   (keeps time_since_bass              │
+                               │    current mid-phrase)           PhraseMemory
                                │                              (phrases + motifs
                                │                               + lyrical motifs,
                                │                               both voices)
                                │                                       │
                                └──────────── ArcController ────────────┘
           proactive loop ─────►           (5-min arc, leadership,
-       (silence timer fires                proactive mode,
-        without bass input)                bass pitch-class tracking,
-                                           energy arc selection,
-                                           motif + lyrical motif selection,
+       (fires only when bass              proactive mode,
+        has actually paused:              bass pitch-class tracking,
+        time_since_bass guard             energy arc selection,
+        in peak + resolution)             motif + lyrical motif selection,
                                            rhythmic density +
                                             complementarity,
                                            register contrast scheduling,
@@ -62,10 +62,16 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
              (motifs, recall,        OscOutput / Dashboard            thinning
               self-play seed)       (always see the full          (short notes dropped
                                       intended phrase)             stochastically at
-                                                                    output only)
+                                                                    output only;
+                                                                  +velocity jitter on
+                                                                   sax riff replays)
                                                                          │
                                                                     MidiOutput
-                                                                (per-note velocity:
+                                                                (sequence-counter:
+                                                                 new phrase flushes
+                                                                 channel and cancels
+                                                                 previous phrase;
+                                                                 per-note velocity:
                                                                  energy arc ×
                                                                  peak accent ×
                                                                  end taper)
@@ -171,7 +177,11 @@ The first and last pitched notes of every phrase are always protected regardless
 
 **Sax riff / insistence** — pass `--sax-riff-prob P` to give the sax a probability P of replaying its previous phrase verbatim instead of generating a fresh response. This is the reverse of the bass riff detection: rather than the sax breaking the bassist's loop, the sax insists on its own phrase and invites the bassist to develop underneath. After `SAX_RIFF_EVOLVE_THRESHOLD` (2) consecutive replays the sax shifts to development mode — it generates a *variation* of its repeated phrase with boosted motivic strength and a directed contour, so the sax is heard to evolve its insistence rather than loop indefinitely. The console logs `[sax riff ×N]` on each replay and `[sax riff ×N develop ...]` when development kicks in. Works in both live-bass and self-play modes.
 
+On every riff replay, each note receives an independent ±8 MIDI velocity jitter (random, applied at output only) so consecutive repetitions feel like a live player re-articulating the phrase rather than a loop. The stored phrase used for musical decision-making is untouched.
+
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase. The proactive trigger checks every 0.5 seconds; during the sparse stage the sax will initiate after 7.5 seconds of bass silence. If you want to play first, a short two-note figure followed by one second of silence is enough to trigger the first response before the 7.5-second window expires.
+
+**Turn-taking** — the proactive trigger uses `time_since_bass` measured from the most recent individual note, not from the end of the previous complete phrase. Without this, a 15-second bass phrase would appear to the arc controller as 15 seconds of silence, causing the sax to fire proactively mid-phrase. The fix: `arc.touch_bass()` is called on every note_on, keeping `time_since_bass` current. Additionally, the peak and resolution stage proactive rules now require `time_since_bass > PROACTIVE_MIN_INTERVAL` (2 s) before the sax can initiate — so the sax only speaks when the bass has actually paused, not just because enough time has passed since the sax last played.
 
 **Loop mode** — pass `--loop` to restart the arc automatically at the end of each 5-minute performance. PhraseMemory is cleared and the ArcController and HarmonyController are reset between loops, so each arc is a clean slate — appropriate for installations where different users may play in succession. The end-of-arc performance summary is shown before the gap, then the live view resumes automatically. `--loop-gap` sets the pause between arcs (default 8 seconds). In self-play mode the seed phrase re-fires after the gap; in live mode the arc waits for your first bass note.
 
@@ -525,7 +535,9 @@ The console prints the chord name, scale size, swing bias, detected bass feel, c
 
 ## Automated test suite
 
-`tests/run_tests.py` runs ten feature tests programmatically — no MIDI hardware needed. Each test constructs a synthetic bass phrase, analyses it, generates a sax response with explicit parameters, and writes a log file. A combined two-track demo MIDI is also produced.
+### Generator tests
+
+`tests/run_tests.py` runs 21 feature tests programmatically — no MIDI hardware needed. Each test constructs a synthetic bass phrase, analyses it, generates a sax response with explicit parameters, and writes a log file. A combined two-track demo MIDI is also produced.
 
 ```bash
 python tests/run_tests.py
@@ -558,6 +570,18 @@ Outputs:
 | 19 | Motivic development — blues cell motif (3, -2, -1) at strength 0.8 |
 | 20 | Voice leading — Dm7 endpoint targeting (chord tones D, F, C) |
 | 21 | Voice leading — G7 endpoint targeting (chord tones G, B, F) |
+
+### Unit tests
+
+`tests/test_arc_controller.py` and `tests/test_phrase_detector.py` provide unit tests for the real-time state machines. No MIDI hardware or model loading required — all note events are injected with synthetic timestamps, and the arc controller's timing state is manipulated directly.
+
+```bash
+~/.pyenv/versions/3.12.1/bin/python3 -m pytest tests/test_arc_controller.py tests/test_phrase_detector.py -v
+```
+
+**Arc controller tests (12)** — cover `touch_bass()`, `PROACTIVE_MIN_INTERVAL` gate, peak-stage bass-activity guard, resolution-stage bass-activity guard, building-stage silence trigger, and arc-not-started guard.
+
+**Phrase detector tests (11)** — cover basic phrase completion, ghost-note silence-timer isolation (the fix for premature phrase endings on guitar/i2M), stale note_off handling (the fix for watchdog cancellation), watchdog for sustained notes, monophony, and sub-minimum duration filtering. A short `silence_threshold` (60 ms) is used so timer-dependent tests complete in under 2 seconds.
 
 ## Analysis tools
 
@@ -597,8 +621,8 @@ wolfson/
 ├── wolfson_train.ipynb           Google Colab training notebook
 ├── requirements.txt
 ├── input/
-│   ├── midi_listener.py          MIDI input, note events
-│   ├── phrase_detector.py        Segments note stream into phrases
+│   ├── midi_listener.py          MIDI input, note events; calls arc.touch_bass() on every note_on
+│   ├── phrase_detector.py        Segments note stream into phrases; ghost-note and stale-note_off guards
 │   ├── phrase_analyzer.py        Phrase features: contour, density, Q&A type, swing, dynamics, energy profile, interval motifs, lyrical motifs
 │   └── beat_estimator.py         Live tempo estimation from bass onsets
 ├── memory/
@@ -608,10 +632,10 @@ wolfson/
 │   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, register contrast, singable duration bias, rest injection, phrase length control
 │   └── train.py                  Training script
 ├── controller/
-│   ├── arc_controller.py         Arc, leadership, proactive mode, modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
+│   ├── arc_controller.py         Arc, leadership, proactive mode (with bass-activity guard), touch_bass(), modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
-│   ├── midi_output.py            Per-note MIDI playback with articulation
+│   ├── midi_output.py            Per-note MIDI playback; sequence-counter prevents stuck notes from concurrent phrases
 │   ├── dashboard.py              Rich full-screen terminal display, black background, high-contrast (--dashboard)
 │   ├── web_display.py            Audience web display served over HTTP with 2-second polling (--web); end-of-arc performance summary overlay
 │   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)
@@ -622,7 +646,9 @@ wolfson/
 │   ├── instruments.py            Instrument family definitions and pitch ranges
 │   └── prepare.py                WJD data preparation script
 ├── tests/
-│   ├── run_tests.py              Automated test suite; writes logs + demo.mid
+│   ├── run_tests.py              Generator test suite; writes logs + demo.mid
+│   ├── test_arc_controller.py    Unit tests: proactive logic, turn-taking guards, touch_bass()
+│   ├── test_phrase_detector.py   Unit tests: phrase completion, ghost notes, stale note_offs, watchdog
 │   └── logs/                     Per-test log files (generated)
 ├── tools/
 │   ├── echo_bass.py              Echo bass phrases on sax output for setup verification and warm-up
