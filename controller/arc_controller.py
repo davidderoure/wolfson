@@ -96,6 +96,15 @@ class ArcController:
         """Called by main.py whenever the sax finishes playing a phrase."""
         self._last_sax_time = time.time()
 
+    def touch_bass(self):
+        """Called on every individual bass note_on so that time_since_bass
+        reflects when the bassist last sounded a note, not just when the
+        previous complete phrase was detected.  Without this, a long bass
+        phrase looks like silence to the proactive logic because
+        _last_bass_time is only updated by on_bass_phrase(), which fires
+        after the 2-second silence gap at the *end* of each phrase."""
+        self._last_bass_time = time.time()
+
     # -----------------------------------------------------------------------
     # Proactive mode
     # -----------------------------------------------------------------------
@@ -121,13 +130,17 @@ class ArcController:
         if time_since_sax < PROACTIVE_MIN_INTERVAL:
             return False
 
-        # Resolution: sax always gets the last word
+        # Resolution: sax always gets the last word — but waits for the bass
+        # to actually pause first so it doesn't talk over the bassist.
         if stage == "resolution" and time_since_sax > PROACTIVE_SILENCE_TRIGGER:
-            return True
+            return time_since_bass > PROACTIVE_SILENCE_TRIGGER
 
-        # Peak: sax occasionally interrupts / initiates
+        # Peak: sax occasionally interrupts / initiates — only during a
+        # genuine bass pause.  Without the time_since_bass guard this fired
+        # every ~2 s regardless of bass activity, leaving no space to trade.
         if stage == "peak" and self._leadership == "sax":
-            return time_since_sax > PROACTIVE_SILENCE_TRIGGER * 0.7
+            return (time_since_sax  > PROACTIVE_SILENCE_TRIGGER * 0.7
+                    and time_since_bass > PROACTIVE_MIN_INTERVAL)
 
         # Building: sax initiates when bassist leaves a long gap
         if stage == "building" and time_since_bass > PROACTIVE_SILENCE_TRIGGER * 1.5:

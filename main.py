@@ -689,6 +689,7 @@ def main():
 
     def _note_on_with_beat(pitch, velocity, t):
         beats.note_on(t)
+        arc.touch_bass()        # keep time_since_bass current during long phrases
         detector.note_on(pitch, velocity, t)
 
     detector = PhraseDetector(on_phrase_complete=on_bass_phrase)
