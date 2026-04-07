@@ -37,7 +37,8 @@ THRESH = 0.06   # 60 ms silence = phrase end
 MIN_DUR = 0.05  # minimum note duration to be kept (matches config default)
 
 
-def make_detector(on_phrase=None, silence_threshold=THRESH, min_note_dur=MIN_DUR):
+def make_detector(on_phrase=None, silence_threshold=THRESH, min_note_dur=MIN_DUR,
+                  min_phrase_notes=1):
     phrases = []
     if on_phrase is None:
         def on_phrase(p):
@@ -46,6 +47,7 @@ def make_detector(on_phrase=None, silence_threshold=THRESH, min_note_dur=MIN_DUR
         on_phrase_complete=on_phrase,
         silence_threshold=silence_threshold,
         min_note_dur=min_note_dur,
+        min_phrase_notes=min_phrase_notes,
     ), phrases
 
 
@@ -83,9 +85,11 @@ class TestBasicPhrase(unittest.TestCase):
         """Several notes in quick succession should be grouped into one phrase."""
         det, phrases = make_detector()
         t = time.time()
+        # Durations must exceed MIN_DUR (50 ms) or they are discarded as ghosts.
+        # Use 60 ms on, 10 ms off between notes.
         for i, pitch in enumerate([60, 62, 64, 65]):
-            det.note_on(pitch, 80, t + i * 0.02)
-            det.note_off(pitch,     t + i * 0.02 + 0.015)
+            det.note_on(pitch, 80,  t + i * 0.07)
+            det.note_off(pitch,     t + i * 0.07 + 0.06)
         fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
         self.assertTrue(fired, "Phrase callback did not fire")
         self.assertEqual(len(phrases[0]), 4)
@@ -274,9 +278,11 @@ class TestMonophony(unittest.TestCase):
         det, phrases = make_detector()
         t = time.time()
         det.note_on(60, 80, t)
-        time.sleep(0.02)
-        det.note_on(62, 80, t + 0.02)   # closes 60 implicitly
-        det.note_off(62, t + 0.12)
+        # Hold note 60 for 70 ms (> MIN_DUR=50 ms) before note 62 arrives,
+        # otherwise the monophony handler discards it as too short.
+        time.sleep(0.07)
+        det.note_on(62, 80, t + 0.07)   # closes 60 implicitly
+        det.note_off(62, t + 0.17)
         fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
         self.assertTrue(fired)
         pitches = [n["pitch"] for n in phrases[0]]

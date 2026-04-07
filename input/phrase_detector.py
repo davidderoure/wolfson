@@ -17,12 +17,15 @@ class PhraseDetector:
     left stranded in an un-flushed state.
     """
 
-    def __init__(self, on_phrase_complete, silence_threshold=None, min_note_dur=None):
+    def __init__(self, on_phrase_complete, silence_threshold=None, min_note_dur=None,
+                 min_phrase_notes=None):
         self.on_phrase_complete  = on_phrase_complete
         self._silence_threshold  = silence_threshold if silence_threshold is not None \
                                    else SILENCE_THRESHOLD_SEC
         self._min_note_dur       = min_note_dur if min_note_dur is not None \
                                    else MIDI_MIN_NOTE_DUR
+        self._min_phrase_notes   = min_phrase_notes if min_phrase_notes is not None \
+                                   else MIN_PHRASE_NOTES
         self._current_phrase = []
         self._active_notes = {}   # pitch -> (onset, velocity)
         self._timer    = None
@@ -134,5 +137,5 @@ class PhraseDetector:
         with self._lock:
             phrase = self._current_phrase
             self._current_phrase = []
-        if len(phrase) >= MIN_PHRASE_NOTES:
+        if len(phrase) >= self._min_phrase_notes:
             self.on_phrase_complete(phrase)
