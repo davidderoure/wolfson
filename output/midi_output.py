@@ -5,13 +5,23 @@ import time
 import threading
 from config import MIDI_OUTPUT_PORT, REST_PITCH
 
-# Semitone intervals from root for each chord quality (maj7, dom7, min7, dim7)
+# Semitone intervals from root for each chord quality (maj7, dom7, min7, dim7).
+# Used in tonal/progression sections where chord identity matters.
 _CHORD_VOICINGS = {
     0: (0, 4, 7, 11),   # major  →  R  3  5  maj7
     1: (0, 4, 7, 10),   # dom    →  R  3  5  b7
     2: (0, 3, 7, 10),   # minor  →  R  b3 5  b7
     3: (0, 3, 6,  9),   # dim    →  R  b3 b5 bb7
 }
+
+# Quartal voicing: four stacked perfect 4ths from the root (R P4 m7 P11).
+# Quality-independent — the same intervals work for any root in a modal
+# context because the goal is harmonic ambiguity rather than functional
+# clarity.  Used during the modal harmonic mode (building / recapitulation)
+# to match the floating, non-resolving character of Dorian / Phrygian etc.
+# Compare: Dm7 = D F A C (pulls toward G or F); D quartal = D G C F
+# (no minor or major 3rd — sounds modal rather than functional).
+_QUARTAL_VOICING = (0, 5, 10, 15)   # R, P4, m7, P11
 
 DEFAULT_VELOCITY    = 80
 ARTICULATION_RATIO  = 0.85   # note sounds for this fraction of its slot; rest is silence
@@ -132,9 +142,10 @@ class MidiOutput:
         self,
         chord_idx:    int,
         beat_dur_sec: float,
-        channel:      int = 3,
-        velocity:     int = 55,
+        channel:      int   = 3,
+        velocity:     int   = 55,
         dur_beats:    float = 1.5,
+        quartal:      bool  = False,
     ):
         """
         Play a voiced 4-note chord on the hint channel in a background thread.
@@ -155,6 +166,9 @@ class MidiOutput:
         dur_beats    — how long the chord sounds in beats (default 1.5)
                        increase for piano sustain; use full phrase length
                        for pads — cancellation keeps this safe regardless
+        quartal      — if True, voice as four stacked perfect 4ths regardless
+                       of chord quality; suited to modal sections where
+                       ambiguity is preferred over functional identity
         """
         from data.chords import NC_INDEX, N_QUALITIES
         if chord_idx == NC_INDEX:
@@ -163,7 +177,8 @@ class MidiOutput:
         root_pc   = chord_idx // N_QUALITIES   # 0–11
         quality   = chord_idx %  N_QUALITIES   # 0–3
         root_midi = 48 + root_pc               # C3–B3
-        notes     = [root_midi + i for i in _CHORD_VOICINGS.get(quality, _CHORD_VOICINGS[0])]
+        intervals = _QUARTAL_VOICING if quartal else _CHORD_VOICINGS.get(quality, _CHORD_VOICINGS[0])
+        notes     = [root_midi + i for i in intervals]
         dur       = beat_dur_sec * dur_beats
         ch        = channel - 1
 

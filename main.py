@@ -545,6 +545,12 @@ def main():
                     beats.beat_duration,
                     channel   = comp_channel,
                     dur_beats = chord_dur,
+                    # Use quartal voicing (stacked 4ths) in modal sections so
+                    # the comping chord has the same ambiguous, non-functional
+                    # character as the sax material.  Tertian voicings are kept
+                    # for progression and pedal modes where chord identity
+                    # (maj7 / dom7 / min7) needs to be clearly audible.
+                    quartal   = (params.get("harmonic_mode") == "modal"),
                 )
             if dashboard:
                 dashboard.update(params, notes, beats.bpm,
