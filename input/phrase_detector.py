@@ -78,17 +78,27 @@ class PhraseDetector:
             # would kill the guard on the *current* note, leaving the phrase
             # stranded if the i2M also drops the current note's note_off.
             #
-            # Only start the silence timer if:
+            # Start the silence timer when:
             #   (a) there are no active notes, AND
             #   (b) there is real phrase content, AND
-            #   (c) the note that just closed was actually kept (not a ghost).
-            # Condition (c) prevents ghost notes (duration < _min_note_dur)
-            # from resetting the silence-timer anchor mid-phrase: a ghost note
-            # fires note_off almost immediately after note_on, leaving
-            # _active_notes empty and starting a premature 2-second countdown
-            # even though the musician has not actually stopped playing.
-            if not self._active_notes and self._current_phrase and note_was_kept:
-                self._start_timer()
+            #   (c) EITHER the note was kept OR no timer is already scheduled.
+            #
+            # Condition (c) is the key refinement.  The original guard required
+            # note_was_kept, which broke the i2M re-trigger pattern: the
+            # converter fires note_on for the same pitch again, which (via
+            # monophony) closes the first instance (kept ✓) then immediately
+            # fires note_off — duration ≈ 0, so NOT kept.  The re-triggering
+            # note_on called _cancel_timer() first, so self._timer is None.
+            # Allowing the timer to start when self._timer is None covers that
+            # case while leaving existing timers (e.g. started by the watchdog
+            # before the stale note_off arrived) safely intact.
+            #
+            # Safety: if the musician is still playing, the very next note_on
+            # calls _cancel_timer() before the timer can fire, so starting the
+            # timer on a ghost never causes a premature phrase split.
+            if not self._active_notes and self._current_phrase:
+                if note_was_kept or self._timer is None:
+                    self._start_timer()
 
     # --- Silence timer (fires after note_off) ---
 

@@ -505,5 +505,73 @@ class TestScenario3_VelocityZeroNoteOff(unittest.TestCase):
         self.assertIn(62, pitches)
 
 
+# ---------------------------------------------------------------------------
+# Scenario 4 — i2M re-trigger (same pitch fired twice at phrase end)
+# ---------------------------------------------------------------------------
+
+class TestScenario4_I2MRetrigger(unittest.TestCase):
+    """
+    i2M re-trigger: the pitch-to-MIDI converter re-triggers the same pitch
+    just before the note naturally ends — sending a second note_on for the
+    same pitch followed immediately by note_off (zero or sub-MIN_DUR duration).
+
+    Monophony in note_on() closes the first instance (kept ✓), but the
+    re-trigger note has duration ≈ 0 and is dropped as a ghost.
+
+    Before the fix, note_was_kept=False suppressed the silence timer,
+    leaving the phrase stranded until the next bass note arrived — which
+    could be many seconds later.
+
+    The fix: remove note_was_kept from the timer condition.  The next note_on
+    always cancels the timer, so starting it on a ghost is safe.
+    """
+
+    def test_retrigger_phrase_fires_after_silence(self):
+        """After an i2M re-trigger, the phrase should fire after THRESH silence."""
+        det, phrases = make_detector()
+        t = time.time()
+
+        # Real note (pitch 42 = F#2, as seen in the failing echo-test-1 trace)
+        det.note_on(42, 79, t)
+        # Re-trigger same pitch 95 ms later — monophony closes first (kept ✓)
+        det.note_on(42, 115, t + 0.095)
+        # Zero-duration note_off at same timestamp (duration = 0 → ghost, not kept)
+        det.note_off(42, t + 0.095)
+
+        # Phrase should fire after THRESH without needing another note_on
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired,
+                        "Phrase should fire after re-trigger ghost — not strand until "
+                        "next note_on")
+        self.assertEqual(len(phrases[0]), 1)
+        self.assertEqual(phrases[0][0]["pitch"], 42)
+
+    def test_retrigger_does_not_split_phrase_when_next_note_is_quick(self):
+        """
+        A re-trigger mid-phrase must not split it: the ghost starts the timer
+        but the next real note (within THRESH) cancels it, and all notes end
+        up in one phrase.
+        """
+        det, phrases = make_detector()
+        t = time.time()
+
+        # Real note A
+        det.note_on(42, 79, t)
+        # Re-trigger 95 ms in
+        det.note_on(42, 115, t + 0.095)   # monophony closes first 42 (kept ✓)
+        det.note_off(42, t + 0.095)        # zero-duration ghost → timer starts
+
+        # Real note B arrives 20 ms later (well within THRESH = 60 ms)
+        det.note_on(43, 80, t + 0.115)
+        det.note_off(43, t + 0.215)
+
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired, "Both notes should be in one phrase")
+        pitches = [n["pitch"] for n in phrases[0]]
+        self.assertIn(42, pitches,  "Note A (42) should be in phrase")
+        self.assertIn(43, pitches,  "Note B (43) should be in phrase")
+        self.assertEqual(len(phrases), 1, "Must not split into two phrases")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

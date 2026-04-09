@@ -52,7 +52,7 @@ ARC_STAGES = [
 _STAGE_COLOR = {name: color for name, _, _, color in ARC_STAGES}
 
 # Shortened labels for the arc bar — full names used everywhere else
-_STAGE_LABEL = {"recapitulation": "recap", "resolution": "res"}
+_STAGE_LABEL = {"building": "build", "recapitulation": "recap", "resolution": "res"}
 
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F",
                "F#", "G", "G#", "A", "A#", "B"]
