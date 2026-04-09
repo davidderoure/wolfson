@@ -264,8 +264,7 @@ def main():
         print("\nStopping.")
     finally:
         listener.stop()
-        midi_out.silence()
-        midi_out.stop()
+        midi_out.stop(silence_channels=1)
 
 
 # ---------------------------------------------------------------------------
