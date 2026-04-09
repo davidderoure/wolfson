@@ -180,7 +180,7 @@ class ArcController:
 
         return False
 
-    def get_proactive_params(self) -> dict:
+    def get_proactive_params(self, live_bass_notes: list[dict] | None = None) -> dict:
         """
         Build generation params for a sax-initiated phrase.
         Seed from sax memory (continue its own line) or early bass (recapitulate).
@@ -188,6 +188,14 @@ class ArcController:
         When memory is empty (e.g. --auto-start before any phrases have been
         heard), falls back to a short neutral seed so the LSTM can still
         generate an opening phrase.
+
+        live_bass_notes: snapshot of notes currently accumulating in the phrase
+          detector (i.e. the bass phrase in progress that has not yet completed).
+          When provided and long enough to analyse, these are used for feature
+          extraction so that a proactive phrase fired mid-long-bass-phrase is
+          harmonically and texturally informed by what the bassist is actually
+          playing right now, rather than by the stale features from the last
+          completed phrase.
         """
         stage = self.stage()
 
@@ -209,7 +217,18 @@ class ArcController:
                 {"pitch": 64, "velocity": 64, "onset": now + beat*2, "offset": now + beat * 3},
             ]
 
-        return self._build_params(seed, analyze(seed), proactive=True)
+        # Feature extraction: prefer live bass data when available.
+        # Require at least 4 notes so the pitch-class and density estimates
+        # are meaningful; fall back to stale last-phrase features otherwise.
+        MIN_LIVE_NOTES = 4
+        if live_bass_notes and len(live_bass_notes) >= MIN_LIVE_NOTES:
+            features = analyze(live_bass_notes)
+        elif self._last_bass_features is not None:
+            features = self._last_bass_features
+        else:
+            features = analyze(seed)
+
+        return self._build_params(seed, features, proactive=True)
 
     # -----------------------------------------------------------------------
     # Internal helpers

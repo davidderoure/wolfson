@@ -32,6 +32,18 @@ class PhraseDetector:
         self._watchdog = None
         self._lock = threading.Lock()
 
+    @property
+    def live_notes(self) -> list[dict]:
+        """
+        Thread-safe snapshot of the notes accumulated so far in the
+        phrase currently being played.  Returns an empty list when no
+        phrase is in progress.  Used by the proactive loop so the sax
+        can analyse the bassist's live material rather than falling back
+        on stale features from the last completed phrase.
+        """
+        with self._lock:
+            return list(self._current_phrase)
+
     def note_on(self, pitch, velocity, t):
         with self._lock:
             self._cancel_timer()

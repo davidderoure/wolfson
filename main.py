@@ -750,7 +750,16 @@ def main():
             if (elapsed < ARC_DURATION_SEC
                     and not midi_out.is_playing
                     and arc.should_play_proactively()):
-                params = arc.get_proactive_params()
+                # Pass a snapshot of whatever bass notes have accumulated in
+                # the current phrase so far.  If the bass is mid-phrase (the
+                # common case for long phrases), get_proactive_params() will
+                # analyse those notes for pitch classes, density, etc. rather
+                # than falling back on the stale features from the last
+                # completed phrase.
+                live = detector.live_notes
+                params = arc.get_proactive_params(
+                    live_bass_notes=live if live else None
+                )
                 if params:
                     _respond(params, triggered_by="sax")
 

@@ -371,13 +371,19 @@ class TestScenario1_NoteExtend(unittest.TestCase):
         det.note_on(62, 80, t + gap)         # monophony closes 60
         det.note_off(60, t + gap + 0.01)     # stale — must NOT start timer
 
-        # Verify: no phrase fires during the silence window (note 62 still active)
-        time.sleep(THRESH * 2)
+        # Brief check: the stale note_off must not fire an immediate phrase.
+        # The watchdog for note 62 fires after THRESH wall-clock seconds from
+        # when note_on(62) was called (~T+0), so sleeping THRESH/2 guarantees
+        # the watchdog has not fired yet and no phrase has been emitted.
+        time.sleep(THRESH / 2)
         self.assertEqual(len(phrases), 0,
                          "Stale note_off must not trigger a premature phrase end")
 
-        # Now close note 62 properly and confirm the phrase does fire
-        det.note_off(62, time.time())
+        # Close note 62 with a synthetic timestamp far enough past its onset
+        # (t + gap) that the duration exceeds MIN_DUR and it is kept.
+        # Using time.time() here would give t+gap+real_elapsed ≈ t+gap-0.05s
+        # (negative duration) because note_on used synthetic future timestamps.
+        det.note_off(62, t + gap + MIN_DUR + 0.05)
         fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
         self.assertTrue(fired, "Phrase should fire after real note_off for note B")
         self.assertIn(62, [n["pitch"] for n in phrases[0]])
