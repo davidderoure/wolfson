@@ -24,6 +24,15 @@ PROACTIVE_SILENCE_TRIGGER = 3.0
 # Minimum gap between sax phrases in proactive mode (avoid crowding)
 PROACTIVE_MIN_INTERVAL = 2.0
 
+# Literal echo at the opening: makes the call-and-response relationship
+# immediately audible even to listeners unfamiliar with free jazz.
+# For the first ECHO_MAX_EXCHANGES bass phrases during the sparse stage,
+# Wolfson plays back the bass phrase verbatim (transposed to sax register)
+# before its own generative voice takes over.
+ECHO_MAX_EXCHANGES = 4    # echo this many times at most
+ECHO_PROBABILITY   = 1.0  # per-phrase chance of echoing (set < 1.0 in
+                           # performance to avoid sounding mechanical)
+
 
 class ArcController:
 
@@ -45,6 +54,10 @@ class ArcController:
         self._harmony = HarmonyController()
         self._last_harmonic_stage = None   # detect stage changes
 
+        # Opening echo counter: counts how many times we have echoed the bass
+        # literally.  Resets on arc reset so each new arc gets a fresh opening.
+        self._echo_count = 0
+
     # -----------------------------------------------------------------------
     # Lifecycle
     # -----------------------------------------------------------------------
@@ -65,6 +78,7 @@ class ArcController:
         self._leadership         = "bass"
         self._harmony            = HarmonyController()
         self._last_harmonic_stage = None
+        self._echo_count         = 0
 
     def elapsed(self) -> float:
         return time.time() - self._start_time if self._start_time else 0.0
@@ -85,12 +99,26 @@ class ArcController:
         """
         Called when the phrase detector fires. Returns a response_params dict
         for the generator. Also updates internal leadership state.
+
+        During the opening sparse stage, the first ECHO_MAX_EXCHANGES phrases
+        are echoed literally (in sax register) so that even listeners unfamiliar
+        with free jazz can immediately hear the call-and-response relationship.
+        The params dict carries an 'echo_phrase' key; main.py reads it and
+        bypasses the LSTM generator for that exchange.
         """
         features = analyze(phrase)
         self._last_bass_time     = time.time()
         self._last_bass_features = features
         self._update_leadership(features)
-        return self._build_params(phrase, features, proactive=False)
+        params = self._build_params(phrase, features, proactive=False)
+
+        if (self.stage() == "sparse"
+                and self._echo_count < ECHO_MAX_EXCHANGES
+                and random.random() < ECHO_PROBABILITY):
+            params["echo_phrase"] = phrase
+            self._echo_count += 1
+
+        return params
 
     def on_sax_played(self):
         """Called by main.py whenever the sax finishes playing a phrase."""

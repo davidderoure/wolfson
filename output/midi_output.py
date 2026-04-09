@@ -15,20 +15,41 @@ _CHORD_VOICINGS = {
 
 DEFAULT_VELOCITY    = 80
 ARTICULATION_RATIO  = 0.85   # note sounds for this fraction of its slot; rest is silence
-MAX_NOTE_DUR        = 5.0    # hard cap (seconds) — prevents runaway stuck notes if the
-                             # LSTM emits a max-length token near the 55 BPM floor
+MAX_NOTE_DUR        = 5.0    # hard cap (seconds) — prevents runaway held notes
 
 
 class MidiOutput:
+    """
+    Thread-safe MIDI output with a single dedicated playback thread.
+
+    play_phrase() is non-blocking and "latest wins": submitting a new phrase
+    while one is playing causes the output thread to finish its current note,
+    send note_off, then switch.  Because only one thread ever writes note
+    events to the MIDI device, concurrent-phrase races and stuck notes are
+    architecturally impossible rather than guarded against by locks.
+
+    Chord hints (play_chord_hint) run on their own short-lived daemon thread
+    on a separate MIDI channel, so they never contend with phrase playback.
+    """
+
     def __init__(self):
-        self._midi_out  = rtmidi.MidiOut()
-        # Exclusive-playback sequencing: each call to play_phrase increments
-        # _play_seq and records its own sequence number.  When a newer call
-        # starts it clears the channel and bumps the counter; the older call
-        # detects the mismatch and exits, preventing overlapping note_ons that
-        # would leave polyphonic voices stuck on the synthesiser.
-        self._play_seq  = 0
-        self._seq_lock  = threading.Lock()
+        self._midi_out = rtmidi.MidiOut()
+
+        # Single-slot phrase queue — protected by _pending_lock.
+        # play_phrase() writes; only the output thread reads and clears.
+        # "Latest wins": a new phrase overwrites any phrase not yet started.
+        self._pending      = None            # (pitches, durations, velocity, channel, on_complete)
+        self._pending_lock = threading.Lock()
+
+        self._wake       = threading.Event()   # wakes output thread when phrase arrives
+        self._shutdown   = threading.Event()   # tells output thread to exit
+        self._is_playing = False               # True while output thread is in _play_blocking
+
+        self._output_thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     def start(self):
         ports = self._midi_out.get_ports()
@@ -36,79 +57,66 @@ class MidiOutput:
             raise RuntimeError("No MIDI output ports found.")
         print(f"MIDI output: {ports[MIDI_OUTPUT_PORT]}")
         self._midi_out.open_port(MIDI_OUTPUT_PORT)
+        self._shutdown.clear()
+        self._output_thread = threading.Thread(
+            target=self._run, name="midi-output", daemon=True,
+        )
+        self._output_thread.start()
 
-    def stop(self):
+    def stop(self, silence_channels=None):
+        """
+        Stop the output thread, optionally silence MIDI channels, close port.
+
+        Joins the output thread before sending any silence messages so the
+        thread and the caller are never writing to the device concurrently.
+
+        silence_channels — int or list[int] of 1-indexed MIDI channels to
+                           silence before closing (same semantics as silence()).
+        """
+        self._shutdown.set()
+        self._wake.set()          # unblock the thread if it is waiting
+        if self._output_thread and self._output_thread.is_alive():
+            self._output_thread.join(timeout=2.0)
+        # Output thread has exited — we now own the device exclusively.
+        if silence_channels is not None:
+            self._send_silence(silence_channels)
         self._midi_out.close_port()
 
-    def _flush_channel(self, ch: int):
-        """Send note_off for every pitch on a 0-indexed channel."""
-        for pitch in range(128):
-            self._midi_out.send_message([0x80 | ch, pitch, 0])
+    # ------------------------------------------------------------------
+    # Public playback interface
+    # ------------------------------------------------------------------
+
+    @property
+    def is_playing(self) -> bool:
+        """True while the output thread is actively playing a phrase."""
+        return self._is_playing
 
     def play_phrase(
         self,
-        pitches:   list[int],
-        durations: list[float],          # per-note duration in seconds
-        velocity   = DEFAULT_VELOCITY,   # int OR list[int] for per-note dynamics
-        channel:   int   = 1,
+        pitches:    list[int],
+        durations:  list[float],          # per-note duration in seconds
+        velocity    = DEFAULT_VELOCITY,   # int OR list[int] for per-note dynamics
+        channel:    int = 1,
+        on_complete = None,               # optional callable; fired when phrase ends
     ):
         """
-        Play a phrase note-by-note with per-note durations.
+        Submit a phrase for playback.  Returns immediately (non-blocking).
 
-        velocity may be a single int (applied to all notes) or a list of ints
-        (one per note) for per-note dynamic shaping from the energy arc.
+        The output thread plays notes one at a time.  If a phrase is already
+        playing, the thread finishes its current note (including note_off),
+        then switches to this phrase.  Any previously queued but unstarted
+        phrase is discarded — latest call always wins.
 
-        Each note sounds for ARTICULATION_RATIO of its slot duration, with a
-        short silence before the next note — giving natural sax articulation.
+        velocity may be a single int or a list of ints (one per note).
 
-        Only one phrase plays at a time.  If a second call arrives while this
-        one is still running (proactive loop vs bass-response overlap), the new
-        call claims the channel: it flushes all notes and increments the
-        sequence counter.  The old call detects the counter change at the top
-        of its next note iteration and exits cleanly, so no voices are left
-        open on the synthesiser.
+        on_complete — if provided, called by the output thread after this
+        phrase ends (whether naturally or superseded by a newer phrase).
+        Use this to defer arc-controller bookkeeping until playback actually
+        finishes rather than firing immediately on submission.
         """
-        ch = channel - 1
-
-        # Claim this playback slot atomically: bump the counter and flush any
-        # notes left sounding by a previous (possibly still-sleeping) call.
-        with self._seq_lock:
-            self._play_seq += 1
-            my_seq = self._play_seq
-            self._flush_channel(ch)
-
-        active_pitch = None
-        try:
-            for i, (pitch, dur) in enumerate(zip(pitches, durations)):
-                # A newer phrase has started — exit immediately.  The channel
-                # was already flushed by the new call's startup, so no orphan
-                # notes remain.
-                if self._play_seq != my_seq:
-                    return
-                if pitch == REST_PITCH:
-                    # Silence sentinel — just wait, no MIDI output
-                    time.sleep(dur)
-                    continue
-                vel         = velocity[i] if isinstance(velocity, list) else velocity
-                vel         = max(1, min(127, int(vel)))
-                dur         = min(dur, MAX_NOTE_DUR)
-                sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
-                silence_dur = max(0.005, dur - sound_dur)
-                active_pitch = pitch
-                self._midi_out.send_message([0x90 | ch, pitch, vel])
-                time.sleep(sound_dur)
-                # Check again after sleeping — new phrase may have started
-                # during the note.  It will have flushed the channel already,
-                # so skip the note_off (it was already sent) and exit.
-                if self._play_seq != my_seq:
-                    return
-                self._midi_out.send_message([0x80 | ch, pitch, 0])
-                active_pitch = None
-                time.sleep(silence_dur)
-        except Exception:
-            # Ensure no note is left sounding if playback is interrupted
-            if active_pitch is not None:
-                self._midi_out.send_message([0x80 | ch, active_pitch, 0])
+        with self._pending_lock:
+            self._pending = (pitches, durations, velocity, channel, on_complete)
+        self._wake.set()
 
     def play_chord_hint(
         self,
@@ -134,12 +142,12 @@ class MidiOutput:
         if chord_idx == NC_INDEX:
             return
 
-        root_pc  = chord_idx // N_QUALITIES        # 0–11
-        quality  = chord_idx %  N_QUALITIES        # 0–3
-        root_midi = 48 + root_pc                   # C3–B3
-        notes    = [root_midi + i for i in _CHORD_VOICINGS.get(quality, _CHORD_VOICINGS[0])]
-        dur      = beat_dur_sec * 1.5
-        ch       = channel - 1
+        root_pc   = chord_idx // N_QUALITIES   # 0–11
+        quality   = chord_idx %  N_QUALITIES   # 0–3
+        root_midi = 48 + root_pc               # C3–B3
+        notes     = [root_midi + i for i in _CHORD_VOICINGS.get(quality, _CHORD_VOICINGS[0])]
+        dur       = beat_dur_sec * 1.5
+        ch        = channel - 1
 
         def _play():
             for n in notes:
@@ -152,15 +160,25 @@ class MidiOutput:
 
     def silence(self, channels=1):
         """
-        Silence one or more MIDI channels.
+        Silence one or more MIDI channels immediately.
 
         Sends CC 123 (All Notes Off) and CC 120 (All Sound Off) followed by
         explicit note_off for every pitch — Logic software instruments ignore
-        the CC messages and only respond to per-pitch note_offs.
+        the CC messages and need per-pitch note_offs.
 
-        channels may be a single int or a list/tuple of ints, e.g.
-        ``silence(1)``, ``silence([1, 2])``.
+        Safe to call when the output thread is idle (e.g. at session start).
+        At shutdown, use stop(silence_channels=...) instead so the thread is
+        joined before silence messages are sent.
+
+        channels — int or list/tuple of 1-indexed MIDI channel numbers.
         """
+        self._send_silence(channels)
+
+    # ------------------------------------------------------------------
+    # Internal helpers — called only from output thread (except _send_silence)
+    # ------------------------------------------------------------------
+
+    def _send_silence(self, channels):
         if isinstance(channels, int):
             channels = [channels]
         for channel in channels:
@@ -169,3 +187,78 @@ class MidiOutput:
             self._midi_out.send_message([0xB0 | ch, 120, 0])   # All Sound Off
             for pitch in range(128):
                 self._midi_out.send_message([0x80 | ch, pitch, 0])
+
+    def _flush_channel(self, ch: int):
+        """Send note_off for every pitch on a 0-indexed channel."""
+        for pitch in range(128):
+            self._midi_out.send_message([0x80 | ch, pitch, 0])
+
+    def _run(self):
+        """Output thread main loop: plays one phrase at a time, latest wins."""
+        while not self._shutdown.is_set():
+            self._wake.wait(timeout=0.1)
+            self._wake.clear()
+            if self._shutdown.is_set():
+                return
+
+            with self._pending_lock:
+                item          = self._pending
+                self._pending = None
+
+            if item is None:
+                continue
+
+            pitches, durations, velocity, channel, on_complete = item
+            self._is_playing = True
+            self._play_blocking(pitches, durations, velocity, channel)
+            self._is_playing = False
+            # Notify caller that this phrase has ended (naturally or superseded).
+            if on_complete is not None and not self._shutdown.is_set():
+                on_complete()
+
+    def _play_blocking(self, pitches, durations, velocity, channel):
+        """
+        Play a phrase note-by-note.  Called only from the output thread.
+
+        Design guarantees:
+        • note_off is sent after every note_on unconditionally — no pitch is
+          ever left sounding regardless of what happens next.
+        • Between notes the thread checks _pending: if a newer phrase has
+          arrived it exits early, and _run immediately picks up that phrase.
+        • The flush at entry clears any residue from the previous phrase.
+        """
+        ch = channel - 1
+        self._flush_channel(ch)
+
+        for i, (pitch, dur) in enumerate(zip(pitches, durations)):
+
+            # Check for a superseding phrase or shutdown before each note.
+            if self._shutdown.is_set():
+                return
+            with self._pending_lock:
+                if self._pending is not None:
+                    return
+
+            if pitch == REST_PITCH:
+                time.sleep(dur)
+                continue
+
+            vel         = velocity[i] if isinstance(velocity, list) else velocity
+            vel         = max(1, min(127, int(vel)))
+            dur         = min(dur, MAX_NOTE_DUR)
+            sound_dur   = max(0.02, dur * ARTICULATION_RATIO)
+            silence_dur = max(0.005, dur - sound_dur)
+
+            self._midi_out.send_message([0x90 | ch, pitch, vel])
+            time.sleep(sound_dur)
+            self._midi_out.send_message([0x80 | ch, pitch, 0])   # unconditional
+
+            # Exit before the inter-note gap if superseded — the new phrase
+            # will flush the channel when it starts.
+            if self._shutdown.is_set():
+                return
+            with self._pending_lock:
+                if self._pending is not None:
+                    return
+
+            time.sleep(silence_dur)

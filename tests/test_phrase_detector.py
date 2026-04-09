@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from input.phrase_detector import PhraseDetector
+from input.midi_listener import MidiListener
 
 
 # Short threshold so tests don't have to wait multiple seconds.
@@ -315,6 +316,193 @@ class TestMinNoteDur(unittest.TestCase):
         self.assertIn(60, pitches)
         self.assertIn(62, pitches)
         self.assertNotIn(61, pitches, "Sub-minimum note should be filtered out")
+
+
+# ---------------------------------------------------------------------------
+# Scenario 1 — i2M note extend: note_off arrives after next note_on
+# ---------------------------------------------------------------------------
+
+class TestScenario1_NoteExtend(unittest.TestCase):
+    """
+    i2M 'note extend' hardware behaviour: the interface holds a note_off until
+    the next note_on arrives.  This means every note_off for note N is stale —
+    it arrives after note N+1 has already started and been closed by monophony.
+
+    Pattern for a three-note run:
+        note_on(A)
+        note_on(B)          ← monophony closes A
+        note_off(A)         ← stale (A no longer in active_notes)
+        note_on(C)          ← monophony closes B
+        note_off(B)         ← stale
+        note_off(C)         ← real, starts silence timer
+    """
+
+    def test_all_notes_in_one_phrase(self):
+        """All notes should appear in a single phrase despite stale note_offs."""
+        det, phrases = make_detector()
+        gap = 0.08   # 80 ms between note_ons — well above MIN_DUR = 50 ms
+
+        t = time.time()
+        det.note_on(60, 80, t)
+        det.note_on(62, 80, t + gap)            # monophony closes 60
+        det.note_off(60, t + gap + 0.01)        # stale — must be ignored
+        det.note_on(64, 80, t + gap * 2)        # monophony closes 62
+        det.note_off(62, t + gap * 2 + 0.01)   # stale — must be ignored
+        det.note_off(64, t + gap * 3)           # real — starts silence timer
+
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired, "Phrase should fire after final real note_off")
+        pitches = [n["pitch"] for n in phrases[0]]
+        self.assertIn(60, pitches, "Note A (60) should be in phrase")
+        self.assertIn(62, pitches, "Note B (62) should be in phrase")
+        self.assertIn(64, pitches, "Note C (64) should be in phrase")
+        self.assertEqual(len(phrases), 1, "Must not split into multiple phrases")
+
+    def test_stale_note_off_does_not_start_premature_timer(self):
+        """
+        A stale note_off must not start the silence timer while the next
+        real note is still active, even if _current_phrase already has content.
+        """
+        det, phrases = make_detector()
+        gap = 0.08
+
+        t = time.time()
+        det.note_on(60, 80, t)
+        det.note_on(62, 80, t + gap)         # monophony closes 60
+        det.note_off(60, t + gap + 0.01)     # stale — must NOT start timer
+
+        # Verify: no phrase fires during the silence window (note 62 still active)
+        time.sleep(THRESH * 2)
+        self.assertEqual(len(phrases), 0,
+                         "Stale note_off must not trigger a premature phrase end")
+
+        # Now close note 62 properly and confirm the phrase does fire
+        det.note_off(62, time.time())
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired, "Phrase should fire after real note_off for note B")
+        self.assertIn(62, [n["pitch"] for n in phrases[0]])
+
+
+# ---------------------------------------------------------------------------
+# Scenario 2 — note_off completely missing for every note in a run
+# ---------------------------------------------------------------------------
+
+class TestScenario2_MissingNoteOffs(unittest.TestCase):
+    """
+    Hardware or cable dropout causes every note_off to be lost.
+    Monophony in note_on() closes each earlier note when the next starts;
+    the watchdog timer closes the final held note so the phrase is never
+    left stranded.
+    """
+
+    def test_run_with_no_note_offs(self):
+        """
+        A run of note_ons with no note_offs at all should still produce a
+        complete phrase: monophony covers the first N-1 notes, the watchdog
+        covers the last.
+        """
+        det, phrases = make_detector(silence_threshold=THRESH)
+        gap = 0.08   # 80 ms between note_ons — above MIN_DUR = 50 ms
+
+        det.note_on(60, 80, time.time())
+        time.sleep(gap)
+        det.note_on(62, 80, time.time())   # monophony closes 60
+        time.sleep(gap)
+        det.note_on(64, 80, time.time())   # monophony closes 62
+        # No note_off for 64 — watchdog fires after THRESH
+
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired, "Watchdog should fire for the last held note")
+        pitches = [n["pitch"] for n in phrases[0]]
+        self.assertIn(60, pitches, "Note 60 (closed by monophony) should be in phrase")
+        self.assertIn(62, pitches, "Note 62 (closed by monophony) should be in phrase")
+        self.assertIn(64, pitches, "Note 64 (closed by watchdog) should be in phrase")
+        self.assertEqual(len(phrases), 1, "Must be a single phrase")
+
+    def test_single_note_no_note_off(self):
+        """
+        A single note with no note_off should produce a one-note phrase
+        via the watchdog, with no further phrases afterwards.
+        """
+        det, phrases = make_detector(silence_threshold=THRESH)
+        det.note_on(60, 80, time.time())
+        # No note_off — watchdog fires after THRESH
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired, "Watchdog should fire for single held note")
+        self.assertEqual(len(phrases[0]), 1)
+        self.assertEqual(phrases[0][0]["pitch"], 60)
+        # No second phrase should appear
+        time.sleep(THRESH * 2)
+        self.assertEqual(len(phrases), 1, "No spurious second phrase")
+
+
+# ---------------------------------------------------------------------------
+# Scenario 3 — note_off via note_on with velocity = 0 (MIDI running-status)
+# ---------------------------------------------------------------------------
+
+class TestScenario3_VelocityZeroNoteOff(unittest.TestCase):
+    """
+    Standard MIDI optimisation: a note_on message with velocity = 0 is
+    treated as note_off (running-status shorthand).  MidiListener._callback
+    must route these to on_note_off, not on_note_on.
+    """
+
+    def test_midi_listener_routes_vel0_as_note_off(self):
+        """
+        Injecting a raw 0x90/vel=0 event into _callback must call on_note_off
+        and must NOT call on_note_on.
+        """
+        note_ons  = []
+        note_offs = []
+        listener = MidiListener(
+            on_note_on=lambda p, v, t: note_ons.append((p, v)),
+            on_note_off=lambda p, t: note_offs.append(p),
+        )
+        # 0x90 ch0 pitch=60 vel=0  →  note_off
+        listener._callback(([0x90, 60, 0], 0.0), None)
+        self.assertEqual(note_offs, [60],
+                         "vel=0 note_on should be routed as note_off")
+        self.assertEqual(note_ons, [],
+                         "vel=0 note_on must NOT be routed as note_on")
+
+    def test_midi_listener_routes_normal_note_on(self):
+        """Sanity check: a normal note_on (vel > 0) still reaches on_note_on."""
+        note_ons  = []
+        note_offs = []
+        listener = MidiListener(
+            on_note_on=lambda p, v, t: note_ons.append((p, v)),
+            on_note_off=lambda p, t: note_offs.append(p),
+        )
+        listener._callback(([0x90, 60, 80], 0.0), None)
+        self.assertEqual(len(note_ons), 1)
+        self.assertEqual(note_ons[0][0], 60)
+        self.assertEqual(note_offs, [])
+
+    def test_vel0_note_offs_complete_phrase_end_to_end(self):
+        """
+        End-to-end: note_offs arrive as 0x90/vel=0 events through MidiListener
+        into PhraseDetector.  A complete phrase should fire normally.
+        """
+        det, phrases = make_detector()
+        listener = MidiListener(
+            on_note_on=lambda p, v, t: det.note_on(p, v, t),
+            on_note_off=lambda p, t: det.note_off(p, t),
+        )
+
+        # note_on pitch=60, then vel=0 note_off, then same for pitch=62
+        listener._callback(([0x90, 60, 80], 0.0), None)   # note_on  60
+        time.sleep(0.10)                                    # hold 100 ms
+        listener._callback(([0x90, 60, 0],  0.0), None)   # note_off 60 via vel=0
+        listener._callback(([0x90, 62, 80], 0.0), None)   # note_on  62
+        time.sleep(0.10)
+        listener._callback(([0x90, 62, 0],  0.0), None)   # note_off 62 via vel=0
+
+        fired = wait_for(lambda: len(phrases) == 1, timeout=0.5)
+        self.assertTrue(fired,
+                        "Phrase should complete when note_offs use vel=0 encoding")
+        pitches = [n["pitch"] for n in phrases[0]]
+        self.assertIn(60, pitches)
+        self.assertIn(62, pitches)
 
 
 if __name__ == "__main__":

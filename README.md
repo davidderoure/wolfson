@@ -67,10 +67,13 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
                                                                    sax riff replays)
                                                                          │
                                                                     MidiOutput
-                                                                (sequence-counter:
-                                                                 new phrase flushes
-                                                                 channel and cancels
-                                                                 previous phrase;
+                                                                (queue architecture:
+                                                                 single output thread;
+                                                                 "latest wins" — new
+                                                                 phrase supersedes
+                                                                 previous mid-note;
+                                                                 on_complete callback
+                                                                 defers arc timing;
                                                                  per-note velocity:
                                                                  energy arc ×
                                                                  peak accent ×
@@ -89,6 +92,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──► PhraseDetector ──► P
 **Question and answer** — the sax detects whether a bass phrase is a question (rising, open ending) or an answer (falling, resolving), and responds with the complement. This creates the classic jazz call-and-response dialogue.
 
 **Leadership and role swapping** — the system tracks who is leading at each moment. Sparse bass playing (low density, small range) signals the bassist is comping; the sax takes the initiative. Dense melodic bass signals the sax should respond. Leadership shifts deliberately over the arc.
+
+**Opening echo** — for the first few bass phrases during the sparse opening stage, Wolfson plays the bass phrase back literally rather than generating a new response. The phrase is transposed to the sax register by the nearest whole-octave shift, so every interval and rhythm is preserved exactly and the audience hears the same melodic idea in the saxophone's voice. This makes the call-and-response relationship immediately legible even to listeners unfamiliar with free jazz — the echo is the most direct possible demonstration that the system is listening. After `ECHO_MAX_EXCHANGES` (default: 4) echoes the budget expires and Wolfson begins generating its own material; because the echoed phrases were stored in memory like any other response, early motivic development draws directly from the bass's opening ideas. `ECHO_PROBABILITY` (default: 0.85 in performance, 1.0 for testing) controls the per-phrase chance of echoing — a value below 1.0 means the system occasionally responds independently from the first exchange, preventing the echo from feeling mechanical.
 
 **Contour steering** — soft logit biases on pitch tokens guide the sax phrase toward a target contour (ascending / descending / neutral). Steering is applied from the first generated note using the seed phrase's mean pitch as the reference, so the whole arc of the response reflects the rhetorical intent rather than just the tail. Bias strength increases linearly with distance from the reference pitch.
 
@@ -581,7 +586,13 @@ Outputs:
 
 **Arc controller tests (12)** — cover `touch_bass()`, `PROACTIVE_MIN_INTERVAL` gate, peak-stage bass-activity guard, resolution-stage bass-activity guard, building-stage silence trigger, and arc-not-started guard.
 
-**Phrase detector tests (11)** — cover basic phrase completion, ghost-note silence-timer isolation (the fix for premature phrase endings on guitar/i2M), stale note_off handling (the fix for watchdog cancellation), watchdog for sustained notes, monophony, and sub-minimum duration filtering. A short `silence_threshold` (60 ms) is used so timer-dependent tests complete in under 2 seconds.
+**Phrase detector tests (18)** — cover basic phrase completion, ghost-note silence-timer isolation (the fix for premature phrase endings on guitar/i2M), stale note_off handling (the fix for watchdog cancellation), watchdog for sustained notes, monophony, and sub-minimum duration filtering. A short `silence_threshold` (60 ms) is used so timer-dependent tests complete in under 2 seconds. Also covers three hardware MIDI scenarios:
+
+| Scenario | Description |
+|----------|-------------|
+| i2M note-extend | Stale note_offs arrive after the next note_on (as produced by the Sonuus i2M in note-extend mode). Tests that stale note_offs do not reset the silence timer or split a legato run into separate phrases. |
+| Missing note_offs | Hardware that never sends note_off events. Monophony closes all notes except the last; the watchdog timer closes the last note after the silence threshold. All notes land in one phrase. |
+| Velocity-zero note_off | `note_on` with velocity 0 is the standard MIDI encoding for note_off. Tests that `MidiListener` routes these correctly — treating them as note_offs rather than silent note_ons — and that they complete a phrase end-to-end. |
 
 ## Analysis tools
 
@@ -632,10 +643,10 @@ wolfson/
 │   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, register contrast, singable duration bias, rest injection, phrase length control
 │   └── train.py                  Training script
 ├── controller/
-│   ├── arc_controller.py         Arc, leadership, proactive mode (with bass-activity guard), touch_bass(), modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
+│   ├── arc_controller.py         Arc, leadership, proactive mode (with bass-activity guard), touch_bass(), opening echo (sparse stage), modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
-│   ├── midi_output.py            Per-note MIDI playback; sequence-counter prevents stuck notes from concurrent phrases
+│   ├── midi_output.py            Per-note MIDI playback; queue architecture with single output thread eliminates stuck-note races; on_complete callback defers arc bookkeeping to playback completion
 │   ├── dashboard.py              Rich full-screen terminal display, black background, high-contrast (--dashboard)
 │   ├── web_display.py            Audience web display served over HTTP with 2-second polling (--web); end-of-arc performance summary overlay
 │   └── osc_output.py             UDP/OSC phrase events for stage visuals (--osc-host)

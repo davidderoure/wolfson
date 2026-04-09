@@ -382,8 +382,9 @@ def main():
         if not _sax_lock.acquire(blocking=False):
             return   # sax already mid-phrase
 
-        notes_out    = []
-        beat_dur_sec = beats.beat_duration
+        notes_out         = []
+        _phrase_submitted = False   # set True only after play_phrase() succeeds
+        beat_dur_sec      = beats.beat_duration
 
         # In self-play, alternate between the two dialogue channels so each
         # "voice" stays on its own MIDI channel throughout the performance.
@@ -430,7 +431,44 @@ def main():
             _sax_repeat_count[0] = 0
 
         try:
-            if _sax_replay:
+            echo_phrase = params.get("echo_phrase")
+            if echo_phrase and not _sax_replay:
+                # ── Opening echo ──────────────────────────────────────────────
+                # Transpose the bass phrase to sax register by the nearest
+                # whole-octave shift so that every interval is preserved
+                # exactly.  The audience hears the bass idea come straight back
+                # in the saxophone's voice — immediately making the listening
+                # relationship legible without any jazz vocabulary required.
+                #
+                # Target: mean pitch near A4 (MIDI 69), a comfortable midpoint
+                # for the sax.  We shift by whole octaves only so the melodic
+                # shape is identical; outliers are hard-clamped to [55, 84].
+                _SAX_TARGET = 69
+                pitched = [n for n in echo_phrase
+                           if n.get("pitch", REST_PITCH) != REST_PITCH]
+                if pitched:
+                    mean_pitch   = sum(n["pitch"] for n in pitched) / len(pitched)
+                    octave_shift = round((_SAX_TARGET - mean_pitch) / 12) * 12
+                    notes = []
+                    for n in echo_phrase:
+                        p = n.get("pitch", REST_PITCH)
+                        if p != REST_PITCH:
+                            p = max(55, min(84, p + octave_shift))
+                        dur_beats = max(
+                            0.25,
+                            (n["offset"] - n["onset"]) / beat_dur_sec,
+                        )
+                        notes.append({
+                            "pitch":          p,
+                            "duration_beats": dur_beats,
+                            "velocity":       n.get("velocity", 80),
+                        })
+                    if not dashboard:
+                        print(f"  [echo  shift={octave_shift:+d}st"
+                              f"  n={len(notes)}]")
+                else:
+                    notes = []   # empty / rest phrase → fall through to empty check
+            elif _sax_replay:
                 notes = list(_last_sax_notes[0])
             else:
                 notes = generator.generate(
@@ -526,12 +564,26 @@ def main():
                     max(1, min(127, v + random.randint(-8, 8)))
                     for v in played_vel
                 ]
+            # Defer arc bookkeeping until the output thread actually finishes
+            # playing this phrase.  With non-blocking play_phrase() the old
+            # approach (calling arc.on_sax_played() immediately after submit)
+            # caused the proactive-silence threshold to expire mid-phrase,
+            # making the sax fire continuously without listening to the bass.
+            _parity_at_submit = _sp_parity[0]
+
+            def _on_phrase_complete(_parity=_parity_at_submit):
+                arc.on_sax_played()
+                if self_play:
+                    _sp_parity[0] = _parity ^ 1   # flip 0↔1 for next phrase
+
             midi_out.play_phrase(
-                pitches   = [n["pitch"] for n in played_notes],
-                durations = played_durs,
-                velocity  = played_vel,
-                channel   = out_channel,
+                pitches     = [n["pitch"] for n in played_notes],
+                durations   = played_durs,
+                velocity    = played_vel,
+                channel     = out_channel,
+                on_complete = _on_phrase_complete,
             )
+            _phrase_submitted = True
 
             notes_out = notes   # capture after successful play
             _last_sax_notes[0] = notes  # store for potential sax riff replay
@@ -542,9 +594,15 @@ def main():
                 _stats.print_summary(arc.elapsed())
 
         finally:
-            arc.on_sax_played()
-            if self_play:
-                _sp_parity[0] ^= 1   # flip 0↔1 for next phrase
+            # Release the lock immediately so bass responses are never blocked
+            # by sax playback.  arc.on_sax_played() fires via on_complete when
+            # the output thread finishes, restoring the correct silence-threshold
+            # timing.  If play_phrase was never reached (exception in generator),
+            # call on_sax_played() here so arc state stays consistent.
+            if not _phrase_submitted:
+                arc.on_sax_played()
+                if self_play:
+                    _sp_parity[0] ^= 1
             _sax_lock.release()
 
         # Self-play feedback — lock already released before this runs
@@ -678,7 +736,9 @@ def main():
                         print("\nArc complete. Stopping.")
                     _running.clear()
                     break
-            if elapsed < ARC_DURATION_SEC and arc.should_play_proactively():
+            if (elapsed < ARC_DURATION_SEC
+                    and not midi_out.is_playing
+                    and arc.should_play_proactively()):
                 params = arc.get_proactive_params()
                 if params:
                     _respond(params, triggered_by="sax")
@@ -699,7 +759,7 @@ def main():
     )
 
     midi_out.start()
-    midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])   # clear any notes from previous run
+    midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B, comp_channel])   # clear any notes from previous run
 
     if dashboard:
         dashboard.start()
@@ -776,8 +836,7 @@ def main():
             web_out.stop()
         if not self_play:
             listener.stop()
-        midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B])
-        midi_out.stop()
+        midi_out.stop(silence_channels=[SELF_PLAY_CH_A, SELF_PLAY_CH_B, comp_channel])
 
 
 # ------------------------------------------------------------------

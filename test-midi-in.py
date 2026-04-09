@@ -1,7 +1,7 @@
 import rtmidi, time
 
 mid = rtmidi.MidiIn()
-mid.open_port(0)  # adjust index if needed
+mid.open_port(2)  # adjust index if needed
 print("Listening for MIDI... (Ctrl-C to stop)")
 
 def cb(event, _):

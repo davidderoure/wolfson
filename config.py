@@ -42,7 +42,7 @@ SELF_PLAY_CH_A = 1   # "call" voice  — odd phrases  (1, 3, 5 …)
 SELF_PLAY_CH_B = 2   # "response" voice — even phrases (2, 4, 6 …)
 
 # Phrase detection
-SILENCE_THRESHOLD_SEC = 1.0   # gap that marks a phrase boundary
+SILENCE_THRESHOLD_SEC = 2.0   # gap that marks a phrase boundary
 MIN_PHRASE_NOTES = 2           # ignore micro-phrases shorter than this
 
 # Phrase memory
