@@ -27,6 +27,8 @@ from rich.panel   import Panel
 from rich.table   import Table
 from rich.text    import Text
 
+from data.chords import chord_index_to_name
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -190,14 +192,17 @@ class WolfsonDashboard:
     # -- Info panel ----------------------------------------------------------
 
     def _info_panel(self) -> Panel:
-        stage   = self._params.get("stage",          "—")
-        harm    = self._params.get("harmonic_mode",   "—")
-        src     = self._params.get("scale_source",    "arc")
-        contour = self._params.get("contour_target",  "—")
-        vel     = self._params.get("velocity",         80)
-        lead    = self._params.get("leadership",      "—")
-        mode    = self._params.get("mode",            "—")
-        n       = len(self._notes)
+        stage     = self._params.get("stage",          "—")
+        harm      = self._params.get("harmonic_mode",   "—")
+        src       = self._params.get("scale_source",    "arc")
+        contour   = self._params.get("contour_target",  "—")
+        vel       = self._params.get("velocity",         80)
+        lead      = self._params.get("leadership",      "—")
+        mode      = self._params.get("mode",            "—")
+        chord_idx = self._params.get("chord_idx")
+        chord_name = (chord_index_to_name(chord_idx)
+                      if chord_idx is not None else "—")
+        n         = len(self._notes)
 
         note_str = " ".join(
             _NOTE_NAMES[note["pitch"] % 12] for note in self._notes
@@ -221,7 +226,7 @@ class WolfsonDashboard:
         )
         grid.add_row(
             Text(f"lead   {lead}",           style=_DIM),
-            Text(f"mode   {mode}",           style=_DIM),
+            Text(f"chord  {chord_name}",     style="bold yellow"),
             Text(f"vel {vel}   n {n}",       style=_BODY),
             Text(note_str,                   style="cyan"),
         )
