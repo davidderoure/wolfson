@@ -22,6 +22,14 @@ bias, then passes these as generation parameters to the phrase
 generator.  Generated phrases are post-processed with phrase-shape
 dynamics (melodic peak accent and end taper) before playback.
 .PP
+During the sparse opening stage Wolfson plays the first few bass
+phrases back literally — transposed to the saxophone register by the
+nearest octave shift, preserving every interval and rhythm exactly.
+This makes the call-and-response relationship immediately audible
+before the generative voice takes over.  After the echo budget is
+exhausted (default: 4 exchanges) Wolfson begins generating its own
+material, drawing on the echoed phrases as seed motifs.
+.PP
 By default the arc clock starts on the first incoming bass phrase,
 not at launch time, so the script may be started well in advance of
 the performance.  Pass \fB\-\-auto\-start\fR to begin the arc immediately
