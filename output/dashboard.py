@@ -34,7 +34,7 @@ from data.chords import chord_index_to_name
 # ---------------------------------------------------------------------------
 
 STATS_WINDOW  = 8     # rolling window size
-ARC_MAX_WIDTH = 72    # max arc-bar character width — keeps the dashboard
+ARC_MAX_WIDTH = 80    # max arc-bar character width — keeps the dashboard
                       # usable in a narrower terminal window; the info and
                       # stats panels below naturally fit within this budget
 
@@ -50,6 +50,9 @@ ARC_STAGES = [
 ]
 
 _STAGE_COLOR = {name: color for name, _, _, color in ARC_STAGES}
+
+# Shortened labels for the arc bar — full names used everywhere else
+_STAGE_LABEL = {"recapitulation": "recap", "resolution": "res"}
 
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F",
                "F#", "G", "G#", "A", "A#", "B"]
@@ -180,7 +183,7 @@ class WolfsonDashboard:
                 bar.append("█" * filled,        style=f"bold {color}")
                 bar.append("░" * (seg - filled), style=f"bright_black")
 
-            label       = name[:seg].center(seg)
+            label       = _STAGE_LABEL.get(name, name)[:seg].center(seg)
             label_style = f"bold {color}" if self._elapsed >= start else "bright_black"
             labels.append(label, style=label_style)
 
