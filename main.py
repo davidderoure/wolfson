@@ -209,6 +209,15 @@ def main():
              "Route this to a piano or pad voice in your DAW.",
     )
     parser.add_argument(
+        "--chord-dur", type=float, default=1.5,
+        metavar="BEATS",
+        help="Duration of each chord hint in beats (default: 1.5). "
+             "Increase for piano sustain (try 3.0) or pad sounds (try 8.0). "
+             "Safe at any duration: if the bass interrupts before the chord "
+             "has released, the old chord is silenced immediately and the "
+             "new one starts cleanly.",
+    )
+    parser.add_argument(
         "--temperature", type=float, default=0.0,
         metavar="T",
         help="Offset added to the arc's per-stage generation temperature "
@@ -234,6 +243,7 @@ def main():
     trade_mode     = args.trade
     use_web        = args.web
     chord_hint     = args.chord_hint
+    chord_dur      = args.chord_dur
     comp_channel   = args.comp_channel
     temp_offset    = args.temperature
 
@@ -533,7 +543,8 @@ def main():
                 midi_out.play_chord_hint(
                     params["chord_idx"],
                     beats.beat_duration,
-                    channel = comp_channel,
+                    channel   = comp_channel,
+                    dur_beats = chord_dur,
                 )
             if dashboard:
                 dashboard.update(params, notes, beats.bpm,

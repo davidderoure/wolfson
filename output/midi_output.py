@@ -47,6 +47,16 @@ class MidiOutput:
 
         self._output_thread: threading.Thread | None = None
 
+        # Chord hint cancellation — generation counter per MIDI channel (0-indexed).
+        # Each play_chord_hint() call increments the counter for that channel and
+        # silences any notes left over from the previous chord before starting the
+        # new one.  The old daemon thread checks on wake-up whether its generation
+        # is still current; if not, it skips its note_offs so they can't cut the
+        # new chord short.
+        self._chord_lock  = threading.Lock()
+        self._chord_gen   = {}   # ch (0-indexed) -> int generation counter
+        self._chord_notes = {}   # ch (0-indexed) -> list[int] currently sounding notes
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -124,19 +134,27 @@ class MidiOutput:
         beat_dur_sec: float,
         channel:      int = 3,
         velocity:     int = 55,
+        dur_beats:    float = 1.5,
     ):
         """
         Play a voiced 4-note chord on the hint channel in a background thread.
 
         Fired once per bass phrase to make the internal harmonic state
         directly audible — like a pianist lightly picking out the chord at
-        the start of each exchange.  The chord sounds for 1.5 beats then
-        releases silently.
+        the start of each exchange.
+
+        If a chord is already sounding on this channel when a new one is
+        requested, the old chord is silenced immediately and its daemon thread
+        skips its own note_offs (generation counter mismatch), preventing any
+        overlap or premature cutoff regardless of dur_beats.
 
         chord_idx    — Wolfson chord index (0–47); NC_INDEX (48) = silent
         beat_dur_sec — seconds per beat at the current tempo
         channel      — 1-indexed MIDI channel (default 3)
         velocity     — MIDI velocity; 55 is a quiet comp
+        dur_beats    — how long the chord sounds in beats (default 1.5)
+                       increase for piano sustain; use full phrase length
+                       for pads — cancellation keeps this safe regardless
         """
         from data.chords import NC_INDEX, N_QUALITIES
         if chord_idx == NC_INDEX:
@@ -146,17 +164,32 @@ class MidiOutput:
         quality   = chord_idx %  N_QUALITIES   # 0–3
         root_midi = 48 + root_pc               # C3–B3
         notes     = [root_midi + i for i in _CHORD_VOICINGS.get(quality, _CHORD_VOICINGS[0])]
-        dur       = beat_dur_sec * 1.5
+        dur       = beat_dur_sec * dur_beats
         ch        = channel - 1
 
-        def _play():
-            for n in notes:
-                self._midi_out.send_message([0x90 | ch, n, velocity])
-            time.sleep(dur)
-            for n in notes:
+        # Acquire generation for this channel, silence previous chord.
+        with self._chord_lock:
+            gen = self._chord_gen.get(ch, 0) + 1
+            self._chord_gen[ch]   = gen
+            old_notes = self._chord_notes.get(ch, [])
+            for n in old_notes:
                 self._midi_out.send_message([0x80 | ch, n, 0])
+            self._chord_notes[ch] = notes
 
-        threading.Thread(target=_play, daemon=True).start()
+        # Send note_ons outside the lock (non-blocking MIDI write).
+        for n in notes:
+            self._midi_out.send_message([0x90 | ch, n, velocity])
+
+        def _release(my_gen):
+            time.sleep(dur)
+            with self._chord_lock:
+                if self._chord_gen.get(ch) != my_gen:
+                    return   # superseded — new chord already took over
+                for n in notes:
+                    self._midi_out.send_message([0x80 | ch, n, 0])
+                self._chord_notes[ch] = []
+
+        threading.Thread(target=_release, args=(gen,), daemon=True).start()
 
     def silence(self, channels=1):
         """
