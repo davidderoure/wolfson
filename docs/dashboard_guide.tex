@@ -1,0 +1,165 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[top=1.8cm,bottom=1.8cm,left=2cm,right=2cm]{geometry}
+\usepackage{fontenc}
+\usepackage{palatino}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{mdframed}
+\usepackage{courier}
+
+% Stage colours
+\definecolor{sparse}{RGB}{120,120,120}
+\definecolor{building}{RGB}{0,160,180}
+\definecolor{peak}{RGB}{200,50,40}
+\definecolor{recap}{RGB}{50,160,80}
+\definecolor{resolution}{RGB}{200,160,0}
+\definecolor{panelbg}{RGB}{30,30,30}
+\definecolor{codebg}{RGB}{24,24,24}
+\definecolor{codetext}{RGB}{200,200,200}
+\definecolor{cyan}{RGB}{0,200,220}
+\definecolor{yellow}{RGB}{210,170,0}
+\definecolor{dimgrey}{RGB}{140,140,140}
+
+\setlist[itemize]{leftmargin=1.4em, itemsep=1pt, topsep=2pt, parsep=0pt}
+\setlist[description]{leftmargin=0em, itemsep=3pt, topsep=2pt, parsep=0pt,
+  style=nextline, font=\ttfamily\small}
+
+\titleformat{\section}{\normalfont\large\bfseries}{}{0em}{}[\vspace{-4pt}\rule{\linewidth}{0.4pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\newcommand{\field}[1]{\texttt{\small #1}}
+\newcommand{\val}[1]{\textit{#1}}
+
+% Mock dashboard panel — dark background box
+\newenvironment{dashpanel}[1]{%
+  \begin{mdframed}[backgroundcolor=codebg, linecolor=dimgrey,
+    linewidth=0.5pt, innerleftmargin=8pt, innerrightmargin=8pt,
+    innertopmargin=4pt, innerbottommargin=4pt,
+    frametitle={\scriptsize\color{dimgrey}#1},
+    frametitleaboveskip=3pt, frametitlebelowskip=2pt]
+  \ttfamily\small\color{codetext}
+}{%
+  \end{mdframed}
+}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE\bfseries Wolfson — Dashboard Quick Reference}\\[4pt]
+  {\small What you are seeing on the console display \quad|\quad \texttt{python main.py --dashboard}}
+\end{center}
+
+\vspace{4pt}
+
+The dashboard refreshes after every phrase.  It has four sections from top to bottom.
+
+%% ─── HEADER ─────────────────────────────────────────────────────────────────
+\section{Header line}
+
+\begin{dashpanel}{}
+\textcolor{cyan}{WOLFSON}\quad t=1:23\quad phrase \#7\quad 62.4 bpm
+\end{dashpanel}
+
+\vspace{4pt}
+\begin{description}
+  \item[\texttt{t=}] Time elapsed since the first bass phrase was played — the arc clock.
+  \item[\texttt{phrase \#}] Running count of sax phrases generated so far.
+  \item[\texttt{bpm}] Live tempo estimate, updated from bass note onsets.
+\end{description}
+
+%% ─── ARC BAR ─────────────────────────────────────────────────────────────────
+\section{Arc progress bar}
+
+\begin{dashpanel}{}
+\textcolor[RGB]{120,120,120}{████████}\textcolor[RGB]{0,160,180}{████████████████████}\textcolor[RGB]{200,200,200}{░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░}\\
+\textcolor[RGB]{120,120,120}{  sparse  }\textcolor[RGB]{0,160,180}{      building      }\textcolor[RGB]{120,120,120}{   peak      recap    res  }
+\end{dashpanel}
+
+\vspace{4pt}
+Five colour-coded segments represent the five stages of the 5-minute performance arc.
+Filled blocks show elapsed time; hollow blocks show time remaining.
+The current stage label is highlighted; future stages are dimmed.
+
+\vspace{2pt}
+\begin{tabularx}{\linewidth}{@{}p{2.4cm}p{1.6cm}X@{}}
+\textcolor{sparse}{\textbf{sparse}} & 0:00–1:00 & Quiet and exploratory; no harmonic constraints. \\
+\textcolor{building}{\textbf{building}} & 1:00–2:30 & Modal groove developing; harmonic language warming up. \\
+\textcolor{peak}{\textbf{peak}} & 2:30–3:30 & Maximum activity; hard swing; chord progressions. \\
+\textcolor{recap}{\textbf{recap}} & 3:30–4:30 & Lyrical return; sax recalls earlier motifs. \\
+\textcolor{resolution}{\textbf{res}} & 4:30–5:00 & Slow and sustained; sax plays the final phrase alone. \\
+\end{tabularx}
+
+%% ─── INFO PANEL ──────────────────────────────────────────────────────────────
+\section{Last phrase panel \textnormal{\small(the main information panel)}}
+
+\begin{dashpanel}{last phrase \quad ⟵ bass}
+\textcolor{cyan}{BUILDING}   \textcolor{cyan}{modal}         scale  \textcolor[RGB]{50,180,80}{BASS}        →  neutral\\
+lead   bass    \textcolor{yellow}{chord  Dm}     vel 80   n 8    \textcolor{cyan}{C D E F G A B}
+\end{dashpanel}
+
+\vspace{6pt}
+\noindent\textbf{Panel title} — what triggered this phrase:
+\quad \field{⟵ bass} = sax responded to a bass phrase you played;\quad
+\field{◎ proactive} = sax initiated during a silence.
+
+\vspace{6pt}
+\noindent\textbf{Top row:}
+
+\vspace{2pt}
+\begin{description}
+  \item[stage name (large, coloured)] Current arc stage — colour matches the arc bar above.
+  \item[harmonic mode] The sax's harmonic strategy: \val{free} (chromatic, no constraints),
+    \val{modal} (held mode, e.g.\ D Dorian), \val{progression} (cycling ii–V–I or blues),
+    \val{pedal} (fixed bass note with shifting upper harmony).
+  \item[scale \val{SRC}]
+    Where the sax's scale came from: \val{ARC} = the arc's harmonic plan;
+    \val{BASS} = the bassist implied 4+ distinct pitch classes and the sax followed them;
+    \val{BLEND} = arc scale broadened to include bass pitch classes.
+  \item[arrow + contour]
+    The melodic shape the sax aimed for: {\large↑} ascending, {\large↓} descending, → neutral.
+\end{description}
+
+\vspace{6pt}
+\noindent\textbf{Bottom row:}
+
+\vspace{2pt}
+\begin{description}
+  \item[lead \val{bass/sax}]
+    Who is leading the conversation: \val{bass} = sax is responding and following;
+    \val{sax} = sax is leading and initiating.
+  \item[chord \val{name}]
+    The chord token active for this phrase — the harmonic context passed to the LSTM\@.
+    Minor chords represent the whole minor family (m, m7, m9); similarly for other qualities.
+  \item[vel \val{N}]
+    Base MIDI velocity for the phrase (mirrors the bassist's dynamic level).
+  \item[n \val{N}]
+    Number of notes in the generated phrase.
+  \item[note names (cyan)]
+    The pitch classes of the generated phrase in order — e.g.\ \val{C D E F G A B}.
+\end{description}
+
+%% ─── STATS PANEL ─────────────────────────────────────────────────────────────
+\section{Rolling statistics panel}
+
+\begin{dashpanel}{last 8 phrases}
+harm    \textcolor{cyan}{modal} \textcolor[RGB]{180,180,180}{3}  \textcolor{cyan}{progression} \textcolor[RGB]{180,180,180}{2}  \textcolor{cyan}{free} \textcolor[RGB]{180,180,180}{1}\\
+scale   \textcolor{cyan}{arc} \textcolor[RGB]{180,180,180}{5}  \textcolor{cyan}{bass} \textcolor[RGB]{180,180,180}{2}  \textcolor{cyan}{blend} \textcolor[RGB]{180,180,180}{1}\\
+arc     \textcolor{cyan}{arch} \textcolor[RGB]{180,180,180}{4}  \textcolor{cyan}{flat} \textcolor[RGB]{180,180,180}{2}  \textcolor{cyan}{ramp\_up} \textcolor[RGB]{180,180,180}{2}\\
+contour \textcolor{cyan}{descending} \textcolor[RGB]{180,180,180}{4}  \textcolor{cyan}{neutral} \textcolor[RGB]{180,180,180}{3}  \textcolor{cyan}{ascending} \textcolor[RGB]{180,180,180}{1}
+\end{dashpanel}
+
+\vspace{4pt}
+Counts of each value across the last 8 phrases, most common first.
+\begin{description}
+  \item[harm] Distribution of harmonic modes used.
+  \item[scale] How often the sax followed the bassist's pitch classes vs the arc's plan.
+  \item[arc] Internal energy shape of phrases: \val{arch} (rises then falls),
+    \val{ramp\_up}, \val{ramp\_down}, \val{flat}, \val{spike}.
+  \item[contour] Melodic direction aimed for across recent phrases.
+\end{description}
+
+\end{document}
