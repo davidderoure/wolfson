@@ -9,7 +9,7 @@ pitches, velocities, and relative timing. No model loading required.
 Usage:
     python tools/echo_bass.py
     python tools/echo_bass.py --channel 2       # different output channel
-    python tools/echo_bass.py --transpose 12    # octave up
+    python tools/echo_bass.py --transpose 0      # echo at original pitch (no transpose)
     python tools/echo_bass.py --delay 0.5       # pause before replay (seconds)
     python tools/echo_bass.py --silence 2.0     # longer gap needed to end phrase
 """
@@ -115,8 +115,10 @@ def main():
         help="Output MIDI channel (default: 1)",
     )
     parser.add_argument(
-        "--transpose", type=int, default=0, metavar="N",
-        help="Transpose in semitones, e.g. 12 for an octave up (default: 0)",
+        "--transpose", type=int, default=12, metavar="N",
+        help="Transpose in semitones (default: 12 = one octave up). "
+             "Bass is typically an octave below sax range; the default "
+             "brings it into register. Use 0 to echo at original pitch.",
     )
     parser.add_argument(
         "--delay", type=float, default=0.0, metavar="SEC",
