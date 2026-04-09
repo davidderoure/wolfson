@@ -33,7 +33,10 @@ from data.chords import chord_index_to_name
 # Constants
 # ---------------------------------------------------------------------------
 
-STATS_WINDOW = 8   # rolling window size
+STATS_WINDOW  = 8     # rolling window size
+ARC_MAX_WIDTH = 72    # max arc-bar character width — keeps the dashboard
+                      # usable in a narrower terminal window; the info and
+                      # stats panels below naturally fit within this budget
 
 ARC_TOTAL  = 300.0   # seconds
 
@@ -160,7 +163,7 @@ class WolfsonDashboard:
     # -- Arc progress --------------------------------------------------------
 
     def _arc_panel(self) -> Panel:
-        width = max(20, (self._console.width or 80) - 4)
+        width = min(ARC_MAX_WIDTH, max(20, (self._console.width or 80) - 4))
 
         bar    = Text(overflow="crop", no_wrap=True)
         labels = Text(overflow="crop", no_wrap=True)
