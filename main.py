@@ -284,9 +284,13 @@ def main():
     # Sax riff tracking (--sax-riff-prob).
     # _last_sax_notes: the most recently generated sax phrase (beat durations),
     #   stored so it can be replayed verbatim on a sax riff cycle.
+    # _last_sax_chord: (chord_idx, harmonic_mode) from the phrase's original
+    #   generation, replayed alongside the notes so the chord hint stays
+    #   consistent with the phrase rather than advancing to the new harmony.
     # _sax_repeat_count: consecutive sax replays; resets when a fresh phrase
     #   is generated.
     _last_sax_notes   = [None]
+    _last_sax_chord   = [None]   # (chord_idx, harmonic_mode) tuple
     _sax_repeat_count = [0]
 
     def _phrase_pitches(phrase: list[dict]) -> tuple:
@@ -540,9 +544,18 @@ def main():
 
             # Update displays and send OSC before playback so receivers
             # can react in sync with the first note.
-            if chord_hint and midi_out and not _sax_replay:
+            if chord_hint and midi_out:
+                # On a sax riff replay use the chord from the original phrase
+                # so the harmony stays consistent with the notes being played.
+                # The arc controller advances its harmony on every call, so
+                # without this the chord hint would change under identical notes.
+                if _sax_replay and _last_sax_chord[0] is not None:
+                    _hint_chord_idx, _hint_mode = _last_sax_chord[0]
+                else:
+                    _hint_chord_idx = params["chord_idx"]
+                    _hint_mode      = params.get("harmonic_mode")
                 midi_out.play_chord_hint(
-                    params["chord_idx"],
+                    _hint_chord_idx,
                     beats.beat_duration,
                     channel   = comp_channel,
                     dur_beats = chord_dur,
@@ -551,7 +564,7 @@ def main():
                     # character as the sax material.  Tertian voicings are kept
                     # for progression and pedal modes where chord identity
                     # (maj7 / dom7 / min7) needs to be clearly audible.
-                    quartal   = (params.get("harmonic_mode") == "modal"),
+                    quartal   = (_hint_mode == "modal"),
                 )
             if dashboard:
                 dashboard.update(params, notes, beats.bpm,
@@ -605,6 +618,8 @@ def main():
 
             notes_out = notes   # capture after successful play
             _last_sax_notes[0] = notes  # store for potential sax riff replay
+            _last_sax_chord[0] = (params["chord_idx"],
+                                  params.get("harmonic_mode"))
 
             # Stats: always recorded; summary printed only in text mode
             _stats.record(params)
@@ -699,6 +714,7 @@ def main():
         _last_bass_pitches[0]        = None
         _bass_repeat_count[0]        = 0
         _last_sax_notes[0]           = None
+        _last_sax_chord[0]           = None
         _sax_repeat_count[0]         = 0
         if web_out:
             web_out.reset_summary()
