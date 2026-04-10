@@ -23,7 +23,8 @@ Biases are calibrated so their combined effect at any step stays musical:
   energy arc      max ~1.5 logits pitch + 0.8 dur
   voice leading   max ~1.0 logits (grows with arc_position)
   motif           2.0 logits on one specific token (sparse, fires rarely)
-  scale           2.0 logits (flat on all in-scale tokens)
+  scale           0.5–3.0 logits (cadence-shaped: weak in phrase body,
+                  ramps from arc_position=0.6 to 3.0 at phrase end)
   stepwise        0.1 logits on ±1–2 semitone tokens (reduced from 0.4)
   leap incentive  0.3–0.5 logits on 3rd–5th interval tokens
   register gravity  max ~2.0 logits downward push above C5
@@ -293,9 +294,14 @@ class PhraseGenerator:
                     # Register gravity — pull toward middle register (below C5)
                     tok_logits = tok_logits + _REGISTER_GRAVITY_BIAS
 
-                    # Scale / mode bias
+                    # Scale / mode bias — cadence-shaped: weak in phrase body
+                    # so the LSTM's chromatic patterns can complete, stronger
+                    # at the end to pull the phrase back to scale tones.
                     if scale_pitch_classes:
-                        tok_logits = _apply_scale_bias(tok_logits, scale_pitch_classes)
+                        tok_logits = _apply_scale_bias(
+                            tok_logits, scale_pitch_classes,
+                            strength=_scale_bias_strength(arc_position),
+                        )
 
                     # Contour steering (from note 0)
                     if note_count >= int(n_notes * CONTOUR_STEER_ONSET):
@@ -558,6 +564,7 @@ def _apply_swing_bias(logits: torch.Tensor, strength: float) -> torch.Tensor:
 def _apply_scale_bias(
     logits:        torch.Tensor,
     pitch_classes: frozenset,
+    strength:      float = SCALE_BIAS_STRENGTH,
 ) -> torch.Tensor:
     if not pitch_classes:
         return logits
@@ -565,8 +572,27 @@ def _apply_scale_bias(
     bias = torch.zeros(VOCAB_SIZE)
     for tok in range(N_PITCHES):
         if (PITCH_MIN + tok) % 12 in pitch_classes:
-            bias[tok] = SCALE_BIAS_STRENGTH
+            bias[tok] = strength
     return logits + bias
+
+
+def _scale_bias_strength(arc_position: float) -> float:
+    """
+    Cadence-aware scale bias strength.
+
+    Weak during the phrase body (0.5 logits) so the LSTM's learned
+    chromatic patterns can complete without being prematurely pulled
+    back to scale tones.  Ramps up sharply over the final 40% of the
+    phrase, reaching 3.0 logits at the last note — stronger than the
+    old flat value — so the resolution back to scale tones is clear
+    and decisive rather than accidental.
+
+    arc_position in [0, 0.6]  →  0.5  logits
+    arc_position in [0.6, 1.0] →  0.5 → 3.0  logits (linear ramp)
+    """
+    ramp = max(0.0, (arc_position - 0.6) / 0.4)   # 0 → 1 over last 40%
+    factor = 0.25 + ramp * 1.25                    # 0.25 → 1.50
+    return SCALE_BIAS_STRENGTH * factor
 
 
 # ---------------------------------------------------------------------------
