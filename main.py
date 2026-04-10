@@ -416,11 +416,18 @@ def main():
         # directed contour — so the sax is heard to develop its insistence
         # rather than loop indefinitely.  Reset the counter after any fresh
         # generation.
+        # At the peak stage cap replays at 1 to limit harmony drift: the arc
+        # controller advances its internal chord state on every phrase call
+        # regardless of whether the sax replays, so a long riff cycle at peak
+        # silently skips chord steps in the progression.  One replay = one
+        # skipped step, which is tolerable; more would cause larger jumps.
+        _sax_riff_threshold = (1 if params.get("stage") == "peak"
+                               else SAX_RIFF_EVOLVE_THRESHOLD)
         _sax_replay = (
             sax_riff_prob > 0.0
             and _last_sax_notes[0] is not None
             and random.random() < sax_riff_prob
-            and _sax_repeat_count[0] < SAX_RIFF_EVOLVE_THRESHOLD
+            and _sax_repeat_count[0] < _sax_riff_threshold
         )
 
         if _sax_replay:
