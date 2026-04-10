@@ -143,7 +143,7 @@ class MidiOutput:
         chord_idx:    int,
         beat_dur_sec: float,
         channel:      int   = 3,
-        velocity:     int   = 55,
+        velocity:     int   = 70,
         dur_beats:    float = 1.5,
         quartal:      bool  = False,
     ):
