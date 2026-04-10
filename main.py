@@ -540,7 +540,7 @@ def main():
 
             # Update displays and send OSC before playback so receivers
             # can react in sync with the first note.
-            if chord_hint and midi_out:
+            if chord_hint and midi_out and not _sax_replay:
                 midi_out.play_chord_hint(
                     params["chord_idx"],
                     beats.beat_duration,
