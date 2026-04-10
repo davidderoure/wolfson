@@ -10,14 +10,15 @@ Wolfson uses an LSTM trained on jazz solo transcriptions from the [Weimar Jazz D
 
 ```
 Bass (pitch-to-MIDI) ──► MidiListener ──────────► PhraseDetector ──► PhraseAnalyzer
-                               │        (pitch range  (note dur min,     (contour, density,
-                          BeatEstimator  velocity min)  min phrase notes,  Q&A type, swing,
-                         (live tempo;                   monophony,         dynamics, energy
-                          last_onset_time               watchdog)          profile, pitch
-                          for beat-sync)                                   classes, interval
-                               │                                           motifs, lyrical
-                               │   every note_on:                          motifs)
-                               │   arc.touch_bass()                             │
+                         (pitch range,             (note dur min,     (contour, density,
+                          velocity min)             min phrase notes,  Q&A type, swing,
+                               │                   monophony,         dynamics, energy
+                          BeatEstimator             watchdog)          profile, pitch
+                         (live tempo;                                  classes, interval
+                          last_onset_time                              motifs, lyrical
+                          for beat-sync)                               motifs)
+                               │   every note_on:                              │
+                               │   arc.touch_bass()                            │
                                │   (keeps time_since_bass               PhraseMemory
                                │    current mid-phrase)              (phrases + motifs
                                │                                     + lyrical motifs,
