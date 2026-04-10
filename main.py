@@ -24,6 +24,7 @@ Self-play mode (--self-play):
 """
 
 import argparse
+import math
 import random
 import threading
 import time
@@ -767,6 +768,20 @@ def main():
                     live_bass_notes=live if live else None
                 )
                 if params:
+                    # Beat-sync: align the proactive phrase start to the next
+                    # bass beat boundary so the sax enters on the beat.
+                    # Only applied when the bass has played recently (within 2
+                    # beats); if the bass is resting or the beat grid is stale
+                    # the sax starts immediately.
+                    last_t = beats.last_onset_time
+                    if last_t is not None:
+                        beat_dur = beats.beat_duration
+                        elapsed_since = time.time() - last_t
+                        if elapsed_since < beat_dur * 2:
+                            beats_past = elapsed_since / beat_dur
+                            wait = (math.ceil(beats_past) - beats_past) * beat_dur
+                            if wait > 0.01:
+                                time.sleep(wait)
                     _respond(params, triggered_by="sax")
 
     # ------------------------------------------------------------------

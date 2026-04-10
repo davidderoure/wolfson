@@ -65,6 +65,11 @@ class BeatEstimator:
     def beat_duration(self) -> float:
         return 60.0 / self._bpm
 
+    @property
+    def last_onset_time(self) -> float | None:
+        """Timestamp of the most recent bass note onset, or None before first note."""
+        return self._onsets[-1] if self._onsets else None
+
     # ------------------------------------------------------------------
     # Estimation
     # ------------------------------------------------------------------
