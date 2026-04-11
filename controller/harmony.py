@@ -183,11 +183,13 @@ class HarmonyController:
     # Main API
     # -----------------------------------------------------------------------
 
-    def next_chord(self) -> tuple[int, frozenset]:
+    def next_chord(self, arc_position: float = 0.0) -> tuple[int, frozenset]:
         """
         Advance harmonic state by one phrase and return (chord_idx, pitch_classes).
 
         pitch_classes is a frozenset[int] (0–11) for scale-tone bias.
+        arc_position: 0.0–1.0 fraction of the total arc elapsed; used by pedal
+                      mode to ensure the final phrase always resolves to i minor.
         """
         if self._mode == "free":
             return self._next_free()
@@ -196,7 +198,7 @@ class HarmonyController:
         elif self._mode == "progression":
             return self._next_progression()
         elif self._mode == "pedal":
-            return self._next_pedal()
+            return self._next_pedal(arc_position)
         else:
             return self._next_free()
 
@@ -277,10 +279,13 @@ class HarmonyController:
             _chord_idx((r + 7) % 12,  QUAL_DOM),   # V7 (tension before return)
         ]
 
-    def _next_pedal(self) -> tuple[int, frozenset]:
+    def _next_pedal(self, arc_position: float = 0.0) -> tuple[int, frozenset]:
         """
         The bass note stays on the pedal root; the chord cycles through
         pedal harmony every PEDAL_CYCLE_LENGTH phrases.
+
+        When arc_position > 0.9 the tonic chord (i minor) is forced so the
+        performance always resolves to home regardless of tempo or phrase count.
         """
         if not self._pedal_harmony:
             self._pedal_harmony = self._build_pedal_harmony()
@@ -293,6 +298,12 @@ class HarmonyController:
             pass   # chord_in_list already computed correctly
 
         self._pedal_step += 1
+
+        # Near the end of the arc always resolve to i minor regardless of
+        # where the cycle happens to be — ensures a tonic landing at any tempo.
+        if arc_position > 0.9:
+            chord_in_list = 0   # index 0 = i minor (tonic)
+
         cid       = self._pedal_harmony[chord_in_list]
         mode_name = chord_to_mode(cid)
         pc        = scale_pitch_classes(chord_root(cid), mode_name)

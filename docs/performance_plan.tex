@@ -1,13 +1,14 @@
-\documentclass[10pt,a4paper]{article}
-\usepackage[top=1.8cm,bottom=1.8cm,left=2cm,right=2cm]{geometry}
+\documentclass[9pt,a4paper,landscape]{article}
+\usepackage[top=1.4cm,bottom=1.4cm,left=1.8cm,right=1.8cm]{geometry}
 \usepackage{fontenc}
 \usepackage{palatino}
 \usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage{tabularx}
 \usepackage{enumitem}
-\usepackage{titlesec}
 \usepackage{parskip}
+\usepackage{array}
+\usepackage{colortbl}
 
 % Stage colours
 \definecolor{sparse}{RGB}{120,120,120}
@@ -16,87 +17,88 @@
 \definecolor{recap}{RGB}{50,160,80}
 \definecolor{resolution}{RGB}{200,160,0}
 
-\setlist[itemize]{leftmargin=1.4em, itemsep=1pt, topsep=2pt, parsep=0pt}
+\definecolor{sparsebg}{RGB}{235,235,235}
+\definecolor{buildingbg}{RGB}{220,245,248}
+\definecolor{peakbg}{RGB}{252,228,227}
+\definecolor{recapbg}{RGB}{224,245,228}
+\definecolor{resolutionbg}{RGB}{252,245,220}
 
-\titleformat{\section}{\normalfont\large\bfseries}{}{0em}{}[\vspace{-4pt}\rule{\linewidth}{0.4pt}]
-\titlespacing{\section}{0pt}{8pt}{4pt}
+\setlist[itemize]{leftmargin=1.2em, itemsep=0pt, topsep=1pt, parsep=0pt}
 
-\newcommand{\stage}[3]{%
-  \noindent
-  \textcolor{#1}{\textbf{#2}}\quad{\small\textit{#3}}\\[2pt]
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{0pt}
+
+\newcommand{\stageheader}[3]{%
+  \cellcolor{#1}\textcolor{white}{\textbf{#2}}\\
+  \cellcolor{#1}\textcolor{white}{\small #3}%
 }
 
 \begin{document}
 
 \begin{center}
-  {\LARGE\bfseries Wolfson — Performance Plan}\\[4pt]
-  {\small Bass improvisation cues by arc stage \quad|\quad 1 May 2026, Wolfson College Oxford}
+  {\large\bfseries Wolfson — Performance Plan}\quad
+  {\small Bass improvisation cues by arc stage \;|\; 1 May 2026, Wolfson College Oxford}
 \end{center}
 
-\vspace{2pt}
+\vspace{3pt}
 
-\begin{tabularx}{\linewidth}{@{}p{3.2cm}p{2.4cm}X@{}}
-\toprule
-\textbf{Stage} & \textbf{Time} & \textbf{What to demonstrate} \\
-\midrule
+\begin{tabularx}{\linewidth}{@{}|X|X|X|X|X|@{}}
 
-\textcolor{sparse}{\textbf{Sparse}} &
-0:00–1:00 &
+% Header row
+\cellcolor{sparse}\textcolor{white}{\textbf{Sparse}}~\newline\cellcolor{sparse}\textcolor{white}{\small 0:00–1:00} &
+\cellcolor{building}\textcolor{white}{\textbf{Building}}~\newline\cellcolor{building}\textcolor{white}{\small 1:00–2:30} &
+\cellcolor{peak}\textcolor{white}{\textbf{Peak}}~\newline\cellcolor{peak}\textcolor{white}{\small 2:30–3:30} &
+\cellcolor{recap}\textcolor{white}{\textbf{Recapitulation}}~\newline\cellcolor{recap}\textcolor{white}{\small 3:30–4:30} &
+\cellcolor{resolution}\textcolor{white}{\textbf{Resolution}}~\newline\cellcolor{resolution}\textcolor{white}{\small 4:30–5:00} \\
+
+\hline
+
+% Content row
+\cellcolor{sparsebg}
 \begin{itemize}
-  \item \textbf{Your first phrases come straight back} — Wolfson echoes the opening bass phrases literally in the sax register (same intervals, same rhythm, transposed up). Play something short and distinctive so the audience can hear it reflected back. This is the clearest possible demonstration that the system is listening.
-  \item \textbf{Play quietly and sparingly} — sax mirrors your dynamic level; a whisper-quiet opening draws a tentative response. Contrast with later stages will be dramatic.
-  \item \textbf{Establish a short motif (2–3 notes)} — plant the seed early; the system will develop and quote it back in recapitulation.
-\end{itemize} \\
-
-\addlinespace[4pt]
-
-\textcolor{building}{\textbf{Building}} &
-1:00–2:30 &
+  \item \textbf{Phrases echo back literally} — same intervals and rhythm, transposed to sax register. Play short, distinctive phrases.
+  \item \textbf{Leave 2+ beats of rest} after each phrase — system needs \textasciitilde2\,s silence to close the phrase and respond.
+  \item \textbf{Play quietly} — sax mirrors your dynamic. A quiet opening makes later contrast dramatic.
+  \item \textbf{Plant a 2–3 note motif} — it will be recalled in recapitulation.
+\end{itemize}
+&
+\cellcolor{buildingbg}
 \begin{itemize}
-  \item \textbf{Play D Dorian} (D E F G A B C) — once you have 4+ distinct pitch classes the sax shifts its harmonic language to match. Switch \textit{away} briefly to hear the response change.
-  \item \textbf{Repeat a riff} — play the same phrase 3+ times. On the third repeat the sax enters development mode: stronger motivic use, directed contour. The sax starts to \textit{argue with} rather than echo the riff.
-  \item \textbf{Let the sax repeat} (\texttt{-\,-sax-riff-prob}) — the reverse: the sax insists on its own phrase while you develop underneath. After two replays it varies the phrase itself. Listen for it evolving its insistence.
-\end{itemize} \\
-
-\addlinespace[4pt]
-
-\textcolor{peak}{\textbf{Peak}} &
-2:30–3:30 &
+  \item \textbf{Play D Dorian} (D E F G A B C) — 4+ distinct pitch classes shifts the sax harmonic language. Switch away briefly to hear it change.
+  \item \textbf{Repeat a riff 3+ times} — sax enters development mode: stronger motivic use, directed contour. It starts to \textit{argue with} the riff.
+  \item \textbf{Play continuously (\textasciitilde8\,s)} to trigger trading mode — sax breaks in, then re-enters every \textasciitilde4\,s (just under a bar).
+  \item \textbf{Let the sax repeat} (\texttt{-\,-sax-riff-prob}) — sax insists on its phrase; you develop underneath. After two replays it varies itself.
+\end{itemize}
+&
+\cellcolor{peakbg}
 \begin{itemize}
-  \item \textbf{Play loudly and densely, then sparsely} — a busy bass line invites a sparser sax response; a terse two-note phrase invites a rush of notes. Flip between them to show the system reacting.
-  \item \textbf{Play a rising phrase, then a falling one} — question-and-answer contour steering. The sax responds to a rising line with a descending resolution and vice versa.
-\end{itemize} \\
-
-\addlinespace[4pt]
-
-\textcolor{recap}{\textbf{Recapitulation}} &
-3:30–4:30 &
+  \item \textbf{Play loudly and densely, then sparsely} — busy bass invites sparser sax; a terse phrase invites a rush of notes.
+  \item \textbf{Rising phrase then falling} — contour steering. Sax responds to a rising line with a descending resolution and vice versa.
+  \item \textbf{Switch between Q\,\&\,A and continuous playing} — short phrases with 2-beat rests give call-and-response; sustained riff triggers trading mode. The contrast is most audible here.
+\end{itemize}
+&
+\cellcolor{recapbg}
 \begin{itemize}
-  \item \textbf{Play low} — register contrast is strongest here; playing in the low register pushes the sax into the upper register. The spatial separation is most audible.
-  \item \textbf{Listen} — the sax quotes lyrical motifs from the sparse and building stages. Pause briefly to let the audience hear the system recalling what was played earlier.
-\end{itemize} \\
-
-\addlinespace[4pt]
-
-\textcolor{resolution}{\textbf{Resolution}} &
-4:30–5:00 &
+  \item \textbf{Play low} — register contrast pushes sax into upper register. Spatial separation is most audible here.
+  \item \textbf{Listen} — sax quotes motifs from sparse and building stages. Pause to let the audience hear the system remembering.
+\end{itemize}
+&
+\cellcolor{resolutionbg}
 \begin{itemize}
-  \item \textbf{Stop playing} — the sax is designed to close the piece unaccompanied. Put the bass down deliberately and let Wolfson play the final phrase alone. The clearest demonstration of musical agency.
-\end{itemize} \\
+  \item \textbf{Stop playing} — sax closes the piece unaccompanied. Put the bass down deliberately. The clearest demonstration of musical agency.
+\end{itemize}
+\\
 
-\bottomrule
+\hline
 \end{tabularx}
 
-\vspace{6pt}
-\noindent\rule{\linewidth}{0.3pt}
-\vspace{2pt}
-
-\noindent{\small
-\textbf{Tips:}\enspace
-The opening echo runs for up to 4 exchanges — after that Wolfson generates its own material.\enspace
-Keep your sparse-stage motif simple and repeat it 2--3 times so it is strongly registered for recapitulation recall.\enspace
-The chord hint (MIDI ch\,3) gives a pianistic stab at each harmony change — useful orientation.\enspace
-With \texttt{-\,-auto-start}, Wolfson is already playing when you walk out; the audience sees an autonomous musician before you touch the bass.
+\vspace{4pt}
+{\small
+\textbf{Q\,\&\,A mode:} play a phrase, stop for 2+ beats — sax replies \textasciitilde1\,s after silence.\quad
+\textbf{Trading mode:} play continuously for \textasciitilde8\,s — sax breaks in and re-enters every \textasciitilde4\,s.\quad
+\textbf{Echo:} first 4 exchanges are literal echoes; after that Wolfson generates freely.\quad
+\textbf{Motif:} repeat sparse motif 2--3$\times$ for strong recapitulation recall.\quad
+\textbf{Auto-start:} Wolfson plays first; join when ready.
 }
 
 \end{document}

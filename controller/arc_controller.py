@@ -24,6 +24,18 @@ PROACTIVE_SILENCE_TRIGGER = 3.0
 # Minimum gap between sax phrases in proactive mode (avoid crowding)
 PROACTIVE_MIN_INTERVAL = 2.0
 
+# Maximum time the sax will stay silent even during continuous bass playing.
+# If the sax hasn't played for this long it will interrupt an extended riff
+# rather than waiting indefinitely for the bassist to stop.
+# At 55 BPM this is ~7 beats; not applied in sparse (call-and-response echo
+# opening) or resolution (sax waits for bass to stop before final phrase).
+PROACTIVE_MAX_WAIT = 8.0
+
+# Once the sax has broken into an active riff, re-fire at this shorter interval
+# (seconds after the previous sax phrase ends) rather than waiting for
+# PROACTIVE_MAX_WAIT again — keeps a continuous trading conversation going.
+PROACTIVE_ACTIVE_INTERVAL = 4.0
+
 # Literal echo at the opening: makes the call-and-response relationship
 # immediately audible even to listeners unfamiliar with free jazz.
 # For the first ECHO_MAX_EXCHANGES bass phrases during the sparse stage,
@@ -82,6 +94,11 @@ class ArcController:
 
     def elapsed(self) -> float:
         return time.time() - self._start_time if self._start_time else 0.0
+
+    def arc_position(self) -> float:
+        """Fraction of the total arc elapsed (0.0–1.0, clamped)."""
+        arc_duration = max(ARC[s][1] for s in ARC)
+        return min(1.0, self.elapsed() / arc_duration)
 
     def stage(self) -> str:
         t = self.elapsed()
@@ -176,6 +193,23 @@ class ArcController:
 
         # Any stage: bassist silent for a long time → fill
         if time_since_bass > PROACTIVE_SILENCE_TRIGGER * 2.5:
+            return True
+
+        # Override: sax has been silent too long even during continuous bass
+        # playing — interrupt an extended riff rather than waiting indefinitely.
+        # Skipped in sparse (echo call-and-response must complete) and
+        # resolution (sax waits for bass to pause before the final phrase).
+        if (stage not in ("sparse", "resolution")
+                and time_since_sax > PROACTIVE_MAX_WAIT):
+            return True
+
+        # Active trading: once the sax has broken into an ongoing riff, keep
+        # re-firing at PROACTIVE_ACTIVE_INTERVAL rather than PROACTIVE_MAX_WAIT.
+        # time_since_bass < PROACTIVE_MIN_INTERVAL detects that the bass is
+        # currently playing (touch_bass() keeps it near zero on every note_on).
+        if (stage not in ("sparse", "resolution")
+                and time_since_bass < PROACTIVE_MIN_INTERVAL
+                and time_since_sax > PROACTIVE_ACTIVE_INTERVAL):
             return True
 
         return False
@@ -280,7 +314,7 @@ class ArcController:
             self._last_harmonic_stage = stage
 
         # Advance harmony and get chord token + scale pitch classes
-        chord_idx, scale_pcs = self._harmony.next_chord()
+        chord_idx, scale_pcs = self._harmony.next_chord(self.arc_position())
 
 
         # ------------------------------------------------------------------
