@@ -23,7 +23,7 @@ MIDI_MIN_NOTE_DUR = 0.05   # 50 ms
 # (e.g. Sonuus i2M) typically produces ghost notes at very low velocity.
 # Raise this value if spurious notes persist; lower it if quiet intentional
 # notes are being dropped. Set to 0 to disable.
-MIDI_VELOCITY_MIN = 20
+MIDI_VELOCITY_MIN = 30
 
 # Beat-matching ("trading bars") mode
 # When True, the sax response is capped to the same number of beats as the
