@@ -436,6 +436,7 @@ def main():
             and _last_sax_notes[0] is not None
             and random.random() < sax_riff_prob
             and _sax_repeat_count[0] < _sax_riff_threshold
+            and not params.get("echo_phrase")   # echo always takes priority
         )
 
         if _sax_replay:

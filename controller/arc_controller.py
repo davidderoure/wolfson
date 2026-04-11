@@ -36,6 +36,13 @@ PROACTIVE_MAX_WAIT = 8.0
 # PROACTIVE_MAX_WAIT again — keeps a continuous trading conversation going.
 PROACTIVE_ACTIVE_INTERVAL = 4.0
 
+# Delay before the very first auto-start phrase (seconds from arc.start()).
+# Long enough for the performer to settle and for any bass pickup noise to
+# subside; short enough that the sax plays before the bassist joins in.
+# Unlike later proactive checks this does NOT require bass silence, so pickup
+# noise cannot block it.
+PROACTIVE_OPENING_DELAY = 3.0
+
 # Literal echo at the opening: makes the call-and-response relationship
 # immediately audible even to listeners unfamiliar with free jazz.
 # For the first ECHO_MAX_EXCHANGES bass phrases during the sparse stage,
@@ -70,6 +77,10 @@ class ArcController:
         # literally.  Resets on arc reset so each new arc gets a fresh opening.
         self._echo_count = 0
 
+        # Whether the sax has played at all since the arc started.  Used to
+        # fire the first auto-start phrase regardless of bass activity.
+        self._sax_has_played = False
+
     # -----------------------------------------------------------------------
     # Lifecycle
     # -----------------------------------------------------------------------
@@ -91,6 +102,7 @@ class ArcController:
         self._harmony            = HarmonyController()
         self._last_harmonic_stage = None
         self._echo_count         = 0
+        self._sax_has_played     = False
 
     def elapsed(self) -> float:
         return time.time() - self._start_time if self._start_time else 0.0
@@ -139,7 +151,8 @@ class ArcController:
 
     def on_sax_played(self):
         """Called by main.py whenever the sax finishes playing a phrase."""
-        self._last_sax_time = time.time()
+        self._last_sax_time  = time.time()
+        self._sax_has_played = True
 
     def touch_bass(self):
         """Called on every individual bass note_on so that time_since_bass
@@ -174,6 +187,11 @@ class ArcController:
 
         if time_since_sax < PROACTIVE_MIN_INTERVAL:
             return False
+
+        # Opening: fire the first phrase after a fixed delay regardless of
+        # bass activity — pickup noise must not block the auto-start phrase.
+        if not self._sax_has_played and self.elapsed() > PROACTIVE_OPENING_DELAY:
+            return True
 
         # Resolution: sax always gets the last word — but waits for the bass
         # to actually pause first so it doesn't talk over the bassist.
