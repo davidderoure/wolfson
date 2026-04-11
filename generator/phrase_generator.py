@@ -203,6 +203,7 @@ class PhraseGenerator:
         max_phrase_beats:    float      = MAX_PHRASE_BEATS,
         register_avoid_midi: float      = 60.0,
         register_contrast_str: float    = 0.0,
+        motif_displacement_beats: float = 0.0,
     ) -> list[dict]:
         """
         Generate a sax phrase seeded by a bass phrase.
@@ -231,6 +232,10 @@ class PhraseGenerator:
                             is pushed lower; if bass < C4 the sax is pushed higher.
         register_contrast_str 0–1 strength of the register-contrast bias, set by
                             the arc controller (0 = sparse/peak, up to 0.6 = recap).
+        motif_displacement_beats  delay before motif injection can fire (beats).
+                            Motif bias is suppressed until this many beats have
+                            accumulated, shifting the motif figure later in the
+                            phrase.  0.0 = no displacement (default).
 
         Returns list of {pitch, duration_beats, velocity_scale} dicts.
         velocity_scale is 0.75–1.25; apply to base phrase velocity in the caller.
@@ -317,8 +322,12 @@ class PhraseGenerator:
                             seed_mean_pitch,
                         )
 
-                    # Motivic development — continue recognised interval patterns
-                    if motif_targets and motif_strength > 0.0:
+                    # Motivic development — continue recognised interval patterns.
+                    # With motif_displacement_beats > 0, suppress the bias until
+                    # that many beats have elapsed so the motif figure starts
+                    # later in the phrase (rhythmic displacement).
+                    if (motif_targets and motif_strength > 0.0
+                            and accumulated_beats >= motif_displacement_beats):
                         tok_logits = _apply_motif_bias(
                             tok_logits, generated_tokens,
                             motif_targets, motif_strength,

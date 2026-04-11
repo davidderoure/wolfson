@@ -197,6 +197,13 @@ def main():
              "(default: 0.0 = always generate a fresh response)",
     )
     parser.add_argument(
+        "--motif-displacement", action="store_true", default=False,
+        help="Randomly displace the motif injection point by 0.5 or 1.0 beats "
+             "each phrase, so recurring interval patterns land in a different "
+             "metric position rather than always starting on the same beat. "
+             "Off by default; enable for live testing of rhythmic displacement.",
+    )
+    parser.add_argument(
         "--chord-hint", action="store_true",
         help="Play a short voiced chord on a separate MIDI channel each time "
              "the harmony changes, making the internal harmonic state directly "
@@ -269,8 +276,9 @@ def main():
     # Stored as a one-element list so the closure can mutate it.
     _sp_parity = [0]   # 0 → CH_A, 1 → CH_B; flipped after every phrase
 
-    riff_prob     = args.riff_prob if self_play else 0.0
-    sax_riff_prob = args.sax_riff_prob
+    riff_prob            = args.riff_prob if self_play else 0.0
+    sax_riff_prob        = args.sax_riff_prob
+    motif_displacement   = args.motif_displacement
 
     # Riff / ostinato tracking (self-play only).
     # _last_injected_bass_notes: the notes most recently fed to on_bass_phrase
@@ -510,6 +518,9 @@ def main():
                     max_phrase_beats      = params.get("max_phrase_beats", MAX_PHRASE_BEATS),
                     register_avoid_midi   = params.get("register_avoid_midi", 60.0),
                     register_contrast_str = params.get("register_contrast_str", 0.0),
+                    motif_displacement_beats = (
+                        random.choice([0.5, 1.0]) if motif_displacement else 0.0
+                    ),
                 )
             if not notes:
                 # Model generated nothing (END_TOKEN sampled immediately).
