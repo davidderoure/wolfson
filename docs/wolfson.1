@@ -100,9 +100,23 @@ After two consecutive replays the sax shifts to development mode,
 generating a variation of the repeated phrase with boosted motivic
 strength and a directed contour, so it is heard to evolve its
 insistence rather than loop indefinitely.
+During the peak stage replays are capped at 1 to limit harmonic drift
+in the chord progression.
+If \fB\-\-chord\-hint\fR is active, replays use the chord from the
+phrase's original generation rather than the freshly-advanced harmony,
+so the same melody always sounds against the same chord.
 The console logs \fI[sax riff \(muN]\fR on each replay and
 \fI[sax riff \(muN develop ...]\fR when development kicks in.
 Works in both live-bass and self-play modes.
+.TP
+.B \-\-motif\-displacement
+Randomly shift the motif injection point by 0.5 or 1.0 beats each
+phrase (chosen independently per phrase).
+The motif bias is suppressed until the accumulated beat count reaches
+the offset, placing the recurring interval figure on a later metric
+position — an eighth-note or quarter-note displacement is enough to
+move it from downbeat to offbeat.
+Off by default; enable for live testing of rhythmic displacement.
 .SS "Display"
 .TP
 .B \-\-dashboard
@@ -148,7 +162,13 @@ OSC UDP port (default: 9000).
 Play a short voiced 4-note chord on a separate MIDI channel at the
 start of each phrase (whether triggered by bass or by the sax playing
 proactively), making the internal harmonic state directly audible.
-The chord sounds for 1.5 beats at a quiet velocity (55) then releases.
+The chord sounds for 1.5 beats at velocity 70 then releases.
+In tonal sections (peak, resolution) a tertian voicing is used
+(root, 3rd, 5th, 7th); in modal sections (building, recapitulation)
+the chord is voiced as four stacked perfect 4ths, matching the
+quality-neutral floating character of modal playing.
+On sax riff replays the chord hint repeats the original chord rather
+than advancing to the new harmony (see \fB\-\-sax\-riff\-prob\fR).
 No chord is emitted during the sparse stage (free/chromatic mode).
 Useful for live testing and rehearsal.
 .TP
@@ -216,6 +236,9 @@ Self-play with elevated temperature:
 .TP
 Installation mode (continuous loop, audience display):
 .B python main.py \-\-self\-play \-\-loop \-\-loop\-gap 10 \-\-web
+.TP
+Rhythmic displacement of motif figures:
+.B python main.py \-\-motif\-displacement
 .TP
 OSC output to TouchDesigner on localhost:
 .B python main.py \-\-osc\-host 127.0.0.1

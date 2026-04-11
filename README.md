@@ -56,7 +56,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──────────► Ph
                                            + modal leap bonus (P4/P5)
                                            + repetition penalty
                                            + rest injection
-                                           + beat accumulator)
+                                           + beat accumulator
+                                           + rhythmic displacement)
                                                        │ full phrase
                      ┌─────────────────────────────────┼──────────────────────────┐
                      │                                 │                          │
@@ -110,7 +111,7 @@ Bass (pitch-to-MIDI) ──► MidiListener ──────────► Ph
 | `progression` | Steps through a chord progression one chord per phrase — ii-V-I, VI-II-V-I, I-VI-II-V, or 12-bar blues; tritone substitution on V7 chords (~35%); used at peak |
 | `pedal` | Fixed bass pedal tone with cycling upper harmony (i → bVII7 → i → V7); used in resolution |
 
-**Scale pitch bias** — positive logit bias is added to pitch tokens whose pitch class belongs to the current chord's scale or mode. Non-scale tones are not penalised, so chromatic passing notes remain available. Bias strength is set to give clearly audible harmonic colour across different modes and chord qualities.
+**Scale pitch bias** — positive logit bias is added to pitch tokens whose pitch class belongs to the current chord's scale or mode. Non-scale tones are not penalised, so chromatic passing notes remain available. The bias is cadence-shaped rather than flat: 0.5 logits during the first 60% of a phrase (giving the LSTM room to complete its own chromatic patterns from training), then ramping linearly to 3.0 logits by the final note. This means the resolution back to scale tones is stronger and more decisive than a flat bias would produce, while chromatic departures in the phrase body are less likely to be cut short before they can resolve naturally.
 
 **Pitch range** — a soft logit penalty steers generated pitches into a practical sax register (E3–E6). Notes outside this range are penalised proportionally to their distance from the limit, preventing the generator from following the bass into an unplayable register while still allowing occasional extremes.
 
@@ -131,6 +132,8 @@ Bass (pitch-to-MIDI) ──► MidiListener ──────────► Ph
 **Energy arc** — every generated phrase has an internal energy shape applied by position-dependent logit biases. The bass phrase's own energy profile (classified as `arch`, `ramp_up`, `ramp_down`, `spike`, or `flat` from its per-note pitch and velocity trajectory) is complemented: a bass `ramp_up` gets a sax `arch` (peaks then resolves); a `ramp_down` bass gets a `ramp_up` sax. Stage overrides apply at structural boundaries: peak stage always forces `arch`; resolution always forces `ramp_down`. The arc shapes three things simultaneously — pitch register (higher = more energetic), note density (shorter durations at the peak), and per-note velocity (0.75×–1.25× the base phrase velocity). The current arc shape is shown in the console and dashboard on every phrase.
 
 **Motivic development** — the system tracks all 2-, 3-, and 4-note interval patterns (n-grams) across recent phrases in transposition-invariant form (signed semitones between adjacent pitches, not absolute pitch). When a pattern has appeared at least twice in the last 16 phrases, it is passed to the generator as a `motif_target`. A logit bias fires whenever the generated line has entered a prefix of the pattern — nudging the LSTM to complete the interval sequence. Strength scales with stage: zero in the sparse stage (insufficient material), rising through building and peak, strongest in recapitulation (0.8) where thematic return is most meaningful. This creates audible motivic echoes and development across the full arc without forcing the model.
+
+**Rhythmic displacement** — pass `--motif-displacement` to randomly shift the motif injection point by 0.5 or 1.0 beats each phrase. The bias is suppressed until the accumulated beat count reaches the displacement offset, so the motif figure can only start after that point. The same interval pattern heard starting on a different beat creates rhythmic variety without changing the melodic content — an eighth-note or quarter-note displacement is enough to place the figure on the offbeat rather than the downbeat. The offset is chosen independently each phrase (random choice of 0.5 or 1.0 beats) so it doesn't become predictable. Off by default.
 
 **Lyrical motif re-use** — a second, narrower motif bank stores interval patterns extracted *only* from sustained (singable) notes: sax notes whose `duration_beats` is at or above 0.4 beats. During quieter arc stages (recapitulation at strength 0.7, resolution at 0.5) these lyrical motifs are given priority over the general pool, so the sax preferentially quotes back the melodic shapes from its own long-note passages. The effect is a sense of returning home to the singable themes built earlier in the arc, rather than recycling ornamental fast-note fragments.
 
@@ -183,6 +186,10 @@ The first and last pitched notes of every phrase are always protected regardless
 **Repetition control** — a growing logit penalty is applied to the most recently played pitch token, starting at −2.5 logits on the first immediate repeat and adding −2.0 for each further consecutive repeat. After three same-pitch notes in a row the penalty reaches −6.5 logits, effectively eliminating a fourth repeat while still permitting occasional passing-tone ornaments. The stepwise bias strength was simultaneously reduced (0.4 → 0.1) to remove a partial cancellation that was blunting the penalty's effect.
 
 **Sax riff / insistence** — pass `--sax-riff-prob P` to give the sax a probability P of replaying its previous phrase verbatim instead of generating a fresh response. This is the reverse of the bass riff detection: rather than the sax breaking the bassist's loop, the sax insists on its own phrase and invites the bassist to develop underneath. After `SAX_RIFF_EVOLVE_THRESHOLD` (2) consecutive replays the sax shifts to development mode — it generates a *variation* of its repeated phrase with boosted motivic strength and a directed contour, so the sax is heard to evolve its insistence rather than loop indefinitely. The console logs `[sax riff ×N]` on each replay and `[sax riff ×N develop ...]` when development kicks in. Works in both live-bass and self-play modes.
+
+During the peak stage replays are capped at 1 (rather than the usual 2) to limit harmonic drift: the arc controller advances its internal chord progression on every phrase call regardless of whether the sax replays, so a longer riff cycle at peak silently skips steps in the ii-V-I sequence. One skipped step is tolerable; more would cause the next fresh phrase to land on the wrong chord.
+
+On every riff replay the chord hint (if active) repeats the chord from the phrase's original generation rather than the freshly-advanced harmony, so the same melody always sounds against the same chord. The arc controller's internal state still advances, but this is not exposed to the listener until the riff cycle ends and a fresh phrase is generated.
 
 On every riff replay, each note receives an independent ±8 MIDI velocity jitter (random, applied at output only) so consecutive repetitions feel like a live player re-articulating the phrase rather than a loop. The stored phrase used for musical decision-making is untouched.
 
@@ -322,6 +329,7 @@ python main.py --loop           # loop continuously: new arc starts after each 5
 python main.py --loop --loop-gap 15   # 15-second pause between arcs (default: 8s)
 python main.py --chord-hint     # play voiced chord on channel 3 each phrase
 python main.py --temperature 0.2   # more adventurous; -0.2 for more conservative
+python main.py --motif-displacement   # shift motif injection point by 0.5 or 1.0 beats each phrase
 ```
 
 #### Dashboard
