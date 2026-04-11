@@ -636,8 +636,12 @@ def main():
 
             notes_out = notes   # capture after successful play
             _last_sax_notes[0] = notes  # store for potential sax riff replay
-            _last_sax_chord[0] = (params["chord_idx"],
-                                  params.get("harmonic_mode"))
+            if not _sax_replay:
+                # Only update the stored chord on fresh generations — replays
+                # must keep the original phrase's chord so that all repeats in
+                # a riff cycle sound against the same harmony.
+                _last_sax_chord[0] = (params["chord_idx"],
+                                      params.get("harmonic_mode"))
 
             # Stats: always recorded; summary printed only in text mode
             _stats.record(params)
