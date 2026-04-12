@@ -195,6 +195,12 @@ On every riff replay, each note receives an independent ±8 MIDI velocity jitter
 
 **Proactive mode** — the sax does not always wait for a bass phrase to end. When the bassist is sparse or silent, the sax initiates. During the resolution stage, the sax always plays the final phrase. The proactive trigger checks every 0.5 seconds; during the sparse stage the sax will initiate after 7.5 seconds of bass silence. If you want to play first, a short two-note figure followed by one second of silence is enough to trigger the first response before the 7.5-second window expires.
 
+Three additional triggers create more responsive interaction in later stages:
+
+- **Opening fire** (`PROACTIVE_OPENING_DELAY = 3 s`) — with `--auto-start`, the very first sax phrase fires unconditionally after 3 seconds regardless of bass activity. This means Wolfson opens the performance even if there is background noise or pickup bleed on the bass input that would otherwise prevent the silence-based triggers from firing.
+- **Extended-riff interrupt** (`PROACTIVE_MAX_WAIT = 8 s`) — in building, peak, and recapitulation stages, if the sax has been silent for more than 8 seconds (for example because the bassist is holding a long riff) the sax breaks in proactively, creating a trading-bars effect.
+- **Active trading** (`PROACTIVE_ACTIVE_INTERVAL = 4 s`) — while the bass is continuously playing, the sax re-fires every 4 seconds. This sustains a continuous conversation during extended riff sections rather than waiting for the bassist to stop.
+
 **Live phrase peeking** — when the proactive trigger fires while the bass is still mid-phrase (the common case for long phrases), `get_proactive_params()` uses whatever bass notes have accumulated so far rather than falling back on stale features from the last *completed* phrase. With ≥ 4 live notes the system analyses their pitch classes, density, contour, and energy profile in real time, so the sax response reflects the bassist's current material even before they stop playing. Fewer than 4 notes falls back to the last completed phrase features (or the arc defaults if the bass has never completed a phrase).
 
 **Beat-synchronised entry** — when the proactive sax fires while the bass is actively playing, the phrase start is aligned to the next bass beat boundary. `BeatEstimator.last_onset_time` gives the timestamp of the most recent bass note; the sax sleeps for the remainder of the current beat before calling `_respond()`, so it enters on the beat rather than mid-bar. The wait is at most one beat (e.g. 1 second at 60 BPM). If the bass has been silent for more than two beats the grid is considered stale and the sax starts immediately.
@@ -264,7 +270,7 @@ Three filters in `config.py` clean up signals from pitch-to-MIDI converters befo
 ```python
 MIDI_PITCH_MIN    = 28    # E1 — discard notes below open E string
 MIDI_PITCH_MAX    = 84    # C6 — discard notes above practical bass range
-MIDI_VELOCITY_MIN = 20    # discard very quiet ghost notes (sympathetic resonance)
+MIDI_VELOCITY_MIN = 30    # discard very quiet ghost notes (sympathetic resonance)
 MIDI_MIN_NOTE_DUR = 0.05  # 50 ms — discard sub-50ms glitch notes
 ```
 
@@ -485,7 +491,7 @@ python main.py --auto-start
 python main.py --auto-start --chord-hint   # with chord hints
 ```
 
-This is useful for live performance contexts where the audience is watching from the moment Wolfson starts — it opens the show rather than waiting in silence. The first proactive phrase fires after `PROACTIVE_SILENCE_TRIGGER` (3 seconds) with a neutral seed; as soon as you respond, Wolfson has real material to work with and subsequent phrases develop from the emerging musical conversation.
+This is useful for live performance contexts where the audience is watching from the moment Wolfson starts — it opens the show rather than waiting in silence. The first proactive phrase fires after `PROACTIVE_OPENING_DELAY` (3 seconds) with a neutral seed; as soon as you respond, Wolfson has real material to work with and subsequent phrases develop from the emerging musical conversation.
 
 #### Self-play mode
 
@@ -683,7 +689,13 @@ wolfson/
 │   └── analyse_midi.py           Stage-by-stage duration analysis of self-play MIDI recordings
 └── docs/
     ├── wolfson.pdf               Presentation slides (PDF, viewable on GitHub)
-    └── wolfson.pptx              Presentation slides (editable source)
+    ├── wolfson.pptx              Presentation slides (editable source)
+    ├── architecture.pdf          System architecture diagram
+    ├── performance_plan.pdf      Single-page performer cue sheet (landscape A4, by arc stage)
+    ├── performance_plan.tex      LaTeX source for the performer cue sheet
+    ├── dashboard_guide.pdf       Dashboard display guide
+    ├── programme_note.md         Audience programme note
+    └── rig.md                    Hardware and DAW setup (i2M, Logic Pro, MIDI routing)
 ```
 
 ## Extending to other instruments
