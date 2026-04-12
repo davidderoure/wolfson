@@ -845,21 +845,9 @@ def main():
     if dashboard:
         dashboard.start()
 
-    if web_out:
-        web_out.start(
-            tunnel        = args.tunnel,
-            tinyurl_token = TINYURL_TOKEN,
-            tinyurl_alias = TINYURL_ALIAS,
-            tunnel_name   = CLOUDFLARE_TUNNEL_NAME,
-            tunnel_host   = CLOUDFLARE_TUNNEL_HOSTNAME,
-        )
-
-    if osc_out:
-        print(f"OSC output → {osc_out}")
-
-    if trade_mode and not dashboard:
-        print(f"Beat-matching (--trade) enabled: sax phrases will match bass phrase length.")
-
+    # Start the MIDI listener and arc clock before web/tunnel so that
+    # _wait_for_flask() (which can block for several seconds while Flask and
+    # the cloudflared tunnel become ready) does not delay the proactive loop.
     if self_play:
         # Seed the loop with an opening phrase in a background thread
         # so main() is not blocked before the KeyboardInterrupt handler.
@@ -899,6 +887,23 @@ def main():
                       "Join in whenever you're ready.\n")
         elif not dashboard:
             print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
+
+    # Web display and tunnel start after the arc — Flask/_wait_for_flask can
+    # take several seconds and must not block the proactive loop.
+    if web_out:
+        web_out.start(
+            tunnel        = args.tunnel,
+            tinyurl_token = TINYURL_TOKEN,
+            tinyurl_alias = TINYURL_ALIAS,
+            tunnel_name   = CLOUDFLARE_TUNNEL_NAME,
+            tunnel_host   = CLOUDFLARE_TUNNEL_HOSTNAME,
+        )
+
+    if osc_out:
+        print(f"OSC output → {osc_out}")
+
+    if trade_mode and not dashboard:
+        print(f"Beat-matching (--trade) enabled: sax phrases will match bass phrase length.")
 
     proactive_thread = threading.Thread(target=_proactive_loop, daemon=True)
     proactive_thread.start()
