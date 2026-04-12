@@ -24,17 +24,16 @@ PROACTIVE_SILENCE_TRIGGER = 3.0
 # Minimum gap between sax phrases in proactive mode (avoid crowding)
 PROACTIVE_MIN_INTERVAL = 2.0
 
-# Maximum time the sax will stay silent even during continuous bass playing.
-# If the sax hasn't played for this long it will interrupt an extended riff
-# rather than waiting indefinitely for the bassist to stop.
-# At 55 BPM this is ~7 beats; not applied in sparse (call-and-response echo
-# opening) or resolution (sax waits for bass to stop before final phrase).
-PROACTIVE_MAX_WAIT = 8.0
+# Maximum silence before the sax interrupts an extended bass riff (beats).
+# At 55 BPM ≈ 8.7 s; at 90 BPM ≈ 5.3 s.  Not applied in sparse (echo
+# call-and-response must complete) or resolution (sax waits for bass to stop
+# before the final phrase).
+PROACTIVE_MAX_WAIT_BEATS = 8
 
-# Once the sax has broken into an active riff, re-fire at this shorter interval
-# (seconds after the previous sax phrase ends) rather than waiting for
-# PROACTIVE_MAX_WAIT again — keeps a continuous trading conversation going.
-PROACTIVE_ACTIVE_INTERVAL = 4.0
+# Once the sax has broken into an active riff, re-fire at this interval (beats)
+# rather than waiting for PROACTIVE_MAX_WAIT_BEATS again — keeps a continuous
+# trading conversation going.  At 55 BPM ≈ 4.4 s; at 90 BPM ≈ 2.7 s.
+PROACTIVE_ACTIVE_INTERVAL_BEATS = 4
 
 # Delay before the very first auto-start phrase (seconds from arc.start()).
 # Long enough for the performer to settle and for any bass pickup noise to
@@ -167,7 +166,7 @@ class ArcController:
     # Proactive mode
     # -----------------------------------------------------------------------
 
-    def should_play_proactively(self) -> bool:
+    def should_play_proactively(self, beat_duration: float = 60.0 / 55) -> bool:
         """
         True when the sax should initiate without waiting for a bass phrase.
 
@@ -217,17 +216,19 @@ class ArcController:
         # playing — interrupt an extended riff rather than waiting indefinitely.
         # Skipped in sparse (echo call-and-response must complete) and
         # resolution (sax waits for bass to pause before the final phrase).
+        max_wait_sec      = PROACTIVE_MAX_WAIT_BEATS      * beat_duration
+        active_interval_sec = PROACTIVE_ACTIVE_INTERVAL_BEATS * beat_duration
         if (stage not in ("sparse", "resolution")
-                and time_since_sax > PROACTIVE_MAX_WAIT):
+                and time_since_sax > max_wait_sec):
             return True
 
         # Active trading: once the sax has broken into an ongoing riff, keep
-        # re-firing at PROACTIVE_ACTIVE_INTERVAL rather than PROACTIVE_MAX_WAIT.
+        # re-firing at active_interval_sec rather than max_wait_sec.
         # time_since_bass < PROACTIVE_MIN_INTERVAL detects that the bass is
         # currently playing (touch_bass() keeps it near zero on every note_on).
         if (stage not in ("sparse", "resolution")
                 and time_since_bass < PROACTIVE_MIN_INTERVAL
-                and time_since_sax > PROACTIVE_ACTIVE_INTERVAL):
+                and time_since_sax > active_interval_sec):
             return True
 
         return False
