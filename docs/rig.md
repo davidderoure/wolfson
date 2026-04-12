@@ -2,9 +2,12 @@
 
 ## Hardware
 
-- **Sonuus i2M** connected to Mac via USB
-  - Output set to **MIDI channel 2**
+- **Sonuus i2M** connected to Mac via USB and configured using sonuus desktop app:
+  - Output set to **MIDI channel 2** 
+  - Instrument is 4 Strong Bass
   - Note Extend: **on**
+  - Can set gate to constrain register (but this is handled by wolfson)
+
 - Bass audio also captured via i2M audio output (Logic track 4)
 
 ## Logic Pro session
@@ -16,9 +19,20 @@
 | 3 | Chord hint (Fender Rhodes) | IAC Driver Bus 2 | ch 3 |
 | 4 | Audio | i2M audio input | — |
 
-Track 1 is **muted** — records the raw bass MIDI for testing and analysis but does not play back.
+Track 1 is **muted** — records the raw bass MIDI for testing and analysis but does not play back. If playing the bass software instrument live, use velocity limit in Logic track to exclude ghost notes (or create another track with the i2M ch 2 input to do this).
+
+Logic instruments:
+
+- Bass - multiple instruments available in Logic library e.g. 
+Studio Upright Bass.
+
+- Comp - Fender Rhodes, multiple organs available in stock Library. Using Vintage Keys -> Vintage Electric Piano and selected Classic. Can use velocity processor if too much tine.
+
+- Sax - Wolfson is tuned to Tenor Sax but beware register and tuning of sampled instruments may not match. Stock woodwind tenor sax is safe but there are jazzier sounds. Beware register mismatch of Studio Tenor Sax, can do MIDI transpose.
 
 ## Wolfson configuration
+
+MIDI Channels preset in main.py with Sax on 1, Bass on 2, Comp on 3
 
 - `MIDI_INPUT_PORT = 2` in `config.py` (i2M)
 - `MIDI_VELOCITY_MIN = 30` in `config.py` — filters i2M ghost notes (vel ≤ 25) before they reach the phrase detector
