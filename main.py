@@ -258,19 +258,6 @@ def main():
     memory    = PhraseMemory()
     generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
 
-    # Warm up the LSTM: the first forward pass triggers PyTorch JIT compilation
-    # and memory allocation, adding latency to the opening phrase.  A
-    # throwaway generate() call here absorbs that cost at startup so the first
-    # real phrase plays promptly.
-    generator.generate(
-        seed_phrase=[],
-        chord_idx=0,
-        scale_pitch_classes=frozenset(range(12)),
-        tempo_bpm=initial_bpm,
-        temperature=0.8,
-        contour_target="neutral",
-    )
-
     arc       = ArcController(memory)
     midi_out  = MidiOutput()
     beats     = BeatEstimator(
@@ -816,13 +803,10 @@ def main():
                 # analyse those notes for pitch classes, density, etc. rather
                 # than falling back on the stale features from the last
                 # completed phrase.
-                _t0 = time.time()
                 live = detector.live_notes
                 params = arc.get_proactive_params(
                     live_bass_notes=live if live else None
                 )
-                print(f"[TIMING] proactive fired: arc_elapsed={arc.elapsed():.2f}s"
-                      f"  get_params={time.time()-_t0:.3f}s")
                 if params:
                     # Beat-sync: align the proactive phrase start to the next
                     # bass beat boundary so the sax enters on the beat.
@@ -838,10 +822,7 @@ def main():
                             wait = (math.ceil(beats_past) - beats_past) * beat_dur
                             if wait > 0.01:
                                 time.sleep(wait)
-                    _t1 = time.time()
                     _respond(params, triggered_by="sax")
-                    print(f"[TIMING] _respond done: {time.time()-_t1:.3f}s"
-                          f"  (first note playing)")
 
     # ------------------------------------------------------------------
     # MIDI I/O and note-on hook for beat estimation
