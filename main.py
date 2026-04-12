@@ -888,8 +888,15 @@ def main():
         elif not dashboard:
             print("Wolfson ready. Play bass. Ctrl-C to stop.\n")
 
-    # Web display and tunnel start after the arc — Flask/_wait_for_flask can
-    # take several seconds and must not block the proactive loop.
+    # Proactive loop starts here — before web/tunnel — so Flask/_wait_for_flask
+    # blocking cannot delay the opening sax phrase.
+    proactive_thread = threading.Thread(target=_proactive_loop, daemon=True)
+    proactive_thread.start()
+
+    # Web display and tunnel start last.  _wait_for_flask() can block for
+    # several seconds while Flask becomes ready and cloudflared connects;
+    # running it after the proactive loop is already spinning means the
+    # opening phrase fires on time regardless.
     if web_out:
         web_out.start(
             tunnel        = args.tunnel,
@@ -904,9 +911,6 @@ def main():
 
     if trade_mode and not dashboard:
         print(f"Beat-matching (--trade) enabled: sax phrases will match bass phrase length.")
-
-    proactive_thread = threading.Thread(target=_proactive_loop, daemon=True)
-    proactive_thread.start()
 
     try:
         while True:
