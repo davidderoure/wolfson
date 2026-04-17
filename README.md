@@ -8,84 +8,54 @@ Wolfson uses an LSTM trained on jazz solo transcriptions from the [Weimar Jazz D
 
 ### Architecture
 
-```
-Bass (pitch-to-MIDI) ──► MidiListener ──────────► PhraseDetector ──► PhraseAnalyzer
-                         (pitch range,             (note dur min,     (contour, density,
-                          velocity min)             min phrase notes,  Q&A type, swing,
-                               │                   monophony,         dynamics, energy
-                          BeatEstimator             watchdog)          profile, pitch
-                         (live tempo;                                  classes, interval
-                          last_onset_time                              motifs, lyrical
-                          for beat-sync)                               motifs)
-                               │   every note_on:                              │
-                               │   arc.touch_bass()                            │
-                               │   (keeps time_since_bass               PhraseMemory
-                               │    current mid-phrase)              (phrases + motifs
-                               │                                     + lyrical motifs,
-                               │                                      both voices)
-                               │                                             │
-                               └──────────────── ArcController ──────────────┘
-          proactive loop ─────►              (5-min arc, leadership,
-       (0.5 s; fires only when               proactive mode,
-        bass paused; live phrase             bass pitch-class tracking,
-        peeking; beat-sync to                energy arc selection,
-        next beat boundary)                 motif + lyrical motif selection,
-                                             rhythmic density + complementarity,
-                                             register contrast scheduling,
-                                             stage swing baseline,
-                                             opening echo: sparse stage sets
-                                              echo_phrase, bypasses generator)
-                                                       │
-                                              HarmonyController
-                                          (mode, progression, pedal,
-                                           tritone substitution)
-                                                       │
-                                                PhraseGenerator
-                                          (LSTM + chord conditioning
-                                           + pitch range limits
-                                           + register gravity
-                                           + register contrast
-                                           + scale pitch bias
-                                           + contour steering
-                                           + swing/triplet bias
-                                           + energy arc shaping
-                                           + long-note penalty
-                                           + singable duration bias
-                                           + motivic development
-                                           + voice leading
-                                           + modal leap bonus (P4/P5)
-                                           + repetition penalty
-                                           + rest injection
-                                           + beat accumulator
-                                           + rhythmic displacement)
-                                                       │ full phrase
-                     ┌─────────────────────────────────┼──────────────────────────┐
-                     │                                 │                          │
-               PhraseMemory              WebAudienceDisplay /             performance
-             (motifs, recall,            OscOutput / Dashboard              thinning
-              self-play seed)           (always see the full            (short notes dropped
-                                          intended phrase)               stochastically at
-                                                                          output only;
-                                                                        +velocity jitter on
-                                                                         sax riff replays)
-                                                                               │
-                                                                          MidiOutput
-                                                                      (queue architecture:
-                                                                       single output thread;
-                                                                       "latest wins" — new
-                                                                       phrase supersedes
-                                                                       previous mid-note;
-                                                                       on_complete callback
-                                                                       defers arc timing;
-                                                                       per-note velocity:
-                                                                       energy arc ×
-                                                                       peak accent ×
-                                                                       end taper)
-                                                                      ┌─────┴──────┐
-                                                                      │            │
-                                                                 sax voice    chord hint
-                                                                 (ch 1/2)     (ch 3,
-                                                                              --chord-hint)
+```mermaid
+flowchart TD
+    bass(["Bass · pitch-to-MIDI"])
+
+    subgraph inp ["Input"]
+        ML["MidiListener\nfilter · routing\ntouch_bass on every note_on"]
+        BE["BeatEstimator\nlive tempo · last_onset_time"]
+        PD["PhraseDetector\nsegmentation · watchdog\nghostnote / stale-noteoff guards"]
+        PA["PhraseAnalyzer\ncontour · density · swing\npitch classes · motifs\nlyrical motifs · Q&A type"]
+    end
+
+    subgraph ctrl ["Control"]
+        PM["PhraseMemory\nphrases · motifs\nlyrical motifs (both voices)"]
+        ARC["ArcController\n5-min arc · leadership\nproactive mode · opening echo\nscale mode detection\nenergy arc · register contrast\nrhythmic complementarity"]
+        HC["HarmonyController\nfree · modal · progression · pedal\ntritone substitution"]
+        PROACTIVE(["Proactive loop\n0.5 s poll · beat-sync entry\nlive phrase peeking"])
+    end
+
+    subgraph gen ["Generation"]
+        PG["PhraseGenerator\nscale pitch bias · contour steering\nswing bias · energy arc shaping\nmotivic development · voice leading\nmodal leap bonus · register contrast\nsingable duration bias · rest injection\nrepetition penalty · beat accumulator"]
+        LSTM[("LSTM\nWJD sax solos\n49-token chord vocab")]
+    end
+
+    subgraph outp ["Output"]
+        MO["MidiOutput\nqueue · single thread\n'latest wins' supersede\nperformance thinning\nphrase dynamics"]
+        SAX(["Sax · ch 1/2"])
+        HINT(["Chord hint · ch 3\n--chord-hint"])
+        DASH["Dashboard\nterminal · --dashboard"]
+        WEB["Web display\naudience phones · --web"]
+        OSC["OSC\nTouchDesigner · Max · --osc-host"]
+    end
+
+    bass --> ML
+    ML --> BE & PD
+    BE -->|beat duration| PD & ARC
+    PD --> PA
+    PA -->|features| ARC
+    PA --> PM
+    PM -->|motifs · recall| ARC
+    PROACTIVE -->|proactive trigger| ARC
+    ARC -->|harmonic mode| HC
+    HC -->|chord_idx · scale_pcs| PG
+    ARC -->|params: scale_mode · contour\nrhythmic_density · motif_targets\nregister_contrast · swing_bias\nn_notes · temperature| PG
+    PG <-->|token loop| LSTM
+    PG -->|phrase| PM
+    PG -->|phrase| MO
+    MO --> SAX & HINT
+    ARC --> DASH & WEB & OSC
 ```
 
 ### Musicality features
@@ -127,7 +97,9 @@ Bass (pitch-to-MIDI) ──► MidiListener ──────────► Ph
 
 **Articulation** — each generated note sounds for 85% of its time slot, with a short silence before the next note. A minimum duration floor (0.2 beats, ≈100 ms at 120 BPM) prevents imperceptibly short notes from appearing in dense generated passages.
 
-**Bass pitch-class tracking** — the system extracts the pitch-class set of each bass phrase (which of the 12 chromatic pitch classes appeared) and uses it to steer the sax toward the tonality the bassist is actually implying. With ≥ 4 distinct pitch classes (a scale fragment or lick), the bass pitch classes override the arc's harmonic plan entirely. With 2–3 (a motif or interval), they are unioned with the arc scale to broaden the available palette. With fewer, the arc's harmonic plan is used unchanged. This means that switching from D Dorian to Gb pentatonic produces an immediate shift in the sax response. The scale source (`bass` / `blend` / `arc`) is shown in the console and dashboard on every phrase.
+**Bass pitch-class tracking** — the system extracts the pitch-class set of each bass phrase (which of the 12 chromatic pitch classes appeared) and uses it to steer the sax toward the tonality the bassist is actually implying. With ≥ 4 distinct pitch classes (a scale fragment or lick), the bass pitch classes override the arc's harmonic plan entirely. With 2–3 (a motif or interval), they are unioned with the arc scale to broaden the available palette. With fewer, the arc's harmonic plan is used unchanged. This means that switching from D Dorian to Gb pentatonic produces an immediate shift in the sax response.
+
+**Scale mode detection** — after pitch-class tracking, the system identifies the closest musical mode (dorian, mixolydian, lydian, aeolian, altered, blues, etc.) and displays it alongside the scale source. When the arc is driving harmony the mode is exact (minor → dorian, dominant → mixolydian, major → ionian). When the bass has contributed pitch classes, the mode is detected by matching observed pitch classes against all 12 candidate modes using a precision score; with ≥ 4 distinct notes the identification is reliable, and ties resolve toward the most jazz-idiomatic mode. The display shows both source and mode — e.g. `scale  BASS  dorian` or `scale  ARC  mixolydian` — making the harmonic intent legible to other musicians and audiences. Designed for educational and installation use.
 
 **Energy arc** — every generated phrase has an internal energy shape applied by position-dependent logit biases. The bass phrase's own energy profile (classified as `arch`, `ramp_up`, `ramp_down`, `spike`, or `flat` from its per-note pitch and velocity trajectory) is complemented: a bass `ramp_up` gets a sax `arch` (peaks then resolves); a `ramp_down` bass gets a `ramp_up` sax. Stage overrides apply at structural boundaries: peak stage always forces `arch`; resolution always forces `ramp_down`. The arc shapes three things simultaneously — pitch register (higher = more energetic), note density (shorter durations at the peak), and per-note velocity (0.75×–1.25× the base phrase velocity). The current arc shape is shown in the console and dashboard on every phrase.
 
@@ -340,7 +312,7 @@ python main.py --motif-displacement   # shift motif injection point by 0.5 or 1.
 
 #### Dashboard
 
-Pass `--dashboard` for a full-screen rich terminal display showing the arc progress bar, current stage, harmonic mode, scale tracking, last-phrase notes, and rolling statistics — suitable for a personal monitor while performing. The dashboard uses a forced black background with high-contrast white and cyan text so it remains legible in all lighting conditions.
+Pass `--dashboard` for a full-screen rich terminal display showing the arc progress bar, current stage, harmonic mode, scale source and detected mode name (e.g. `scale  BASS  dorian`), last-phrase notes, and rolling statistics — suitable for a personal monitor while performing. The dashboard uses a forced black background with high-contrast white and cyan text so it remains legible in all lighting conditions.
 
 ```bash
 python main.py --dashboard
@@ -369,7 +341,7 @@ The page shows:
 - **Arc progress bar** — five colour-coded segments (sparse grey, building cyan, peak red, recapitulation green, resolution yellow); each segment fills as the performance progresses with the current stage partially highlighted
 - **Stage name** in large type, coloured by stage, with time remaining
 - **BPM** and phrase count as large numbers
-- **Harmony, scale, contour, velocity** as info cards
+- **Harmony, scale, contour, velocity** as info cards — the Scale card shows the detected mode name and its source, e.g. `dorian  ·  BASS` or `mixolydian  ·  ARC`
 - **Last phrase note names** as coloured chips (in the current stage colour)
 - **Trigger indicator** — `⟵ bass phrase` or `◎ sax initiates`
 - **Pulse animation** — a brief coloured border flash on every new phrase
@@ -666,7 +638,7 @@ wolfson/
 │   ├── phrase_generator.py       Seeds LSTM; contour, scale, swing, energy arc, motif, voice leading, modal leap, register contrast, singable duration bias, rest injection, phrase length control
 │   └── train.py                  Training script
 ├── controller/
-│   ├── arc_controller.py         Arc, leadership, proactive mode (with bass-activity guard), touch_bass(), opening echo (sparse stage), modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
+│   ├── arc_controller.py         Arc, leadership, proactive mode (with bass-activity guard), touch_bass(), opening echo (sparse stage), scale mode detection, modal_strength + rhythmic_density (with reactive complementarity) + register_contrast + swing range schedules, lyrical motif recall
 │   └── harmony.py                Harmonic modes: free, modal, progression, pedal
 ├── output/
 │   ├── midi_output.py            Per-note MIDI playback; queue architecture with single output thread eliminates stuck-note races; on_complete callback defers arc bookkeeping to playback completion
@@ -676,7 +648,7 @@ wolfson/
 ├── data/
 │   ├── encoding.py               Pitch+duration token encoding
 │   ├── chords.py                 Chord parsing and 49-token vocabulary
-│   ├── scales.py                 Mode interval tables and scale pitch-class helpers
+│   ├── scales.py                 Mode interval tables, scale pitch-class helpers, identify_mode()
 │   ├── instruments.py            Instrument family definitions and pitch ranges
 │   └── prepare.py                WJD data preparation script
 ├── tests/
