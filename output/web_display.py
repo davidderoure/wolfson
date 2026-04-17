@@ -215,7 +215,9 @@ function update(state) {
   document.getElementById("phrase-n").textContent = state.phrase_count || "—";
 
   document.getElementById("harm").textContent    = state.harmonic_mode || "—";
-  document.getElementById("scale").textContent   = (state.scale_source || "—").toUpperCase();
+  var sm = state.scale_mode || "";
+  var ss = (state.scale_source || "").toUpperCase();
+  document.getElementById("scale").textContent   = sm ? (sm + "  ·  " + ss) : (ss || "—");
   const ct = state.contour_target || "";
   document.getElementById("contour").textContent = (ARROWS[ct] || "") + " " + ct;
   document.getElementById("vel").textContent     = state.velocity || "—";
@@ -745,6 +747,7 @@ class WebAudienceDisplay:
             "stage":          params.get("stage",          ""),
             "harmonic_mode":  params.get("harmonic_mode",  ""),
             "scale_source":   params.get("scale_source",   "arc"),
+            "scale_mode":     params.get("scale_mode",     ""),
             "contour_target": params.get("contour_target", "neutral"),
             "velocity":       params.get("velocity",        80),
             "triggered_by":   triggered_by,

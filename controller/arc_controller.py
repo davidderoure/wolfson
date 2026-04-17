@@ -13,6 +13,7 @@ import time
 
 from config import ARC
 from data.chords import NC_INDEX
+from data.scales import chord_root, chord_to_mode, identify_mode
 from input.phrase_analyzer import analyze, complement_contour, complement_energy_arc
 from memory.phrase_memory import PhraseMemory
 from controller.harmony import HarmonyController, stage_to_harmonic_mode
@@ -360,6 +361,20 @@ class ArcController:
             scale_source = "arc"           # arc harmony only
 
         # ------------------------------------------------------------------
+        # Musical mode name for display (educational / installation use).
+        # Arc-driven: deterministic from chord quality (exact).
+        # Bass/blend: best-match against observed pitch classes.
+        # ------------------------------------------------------------------
+        _root = chord_root(chord_idx)
+        if scale_source == "arc":
+            scale_mode = chord_to_mode(chord_idx)
+        else:
+            # Use bass_pcs directly — they're the improvisor's evidence;
+            # scale_pcs may include arc notes that dilute the detection.
+            _detect_pcs = bass_pcs if bass_pcs else scale_pcs
+            scale_mode, _ = identify_mode(_root, _detect_pcs)
+
+        # ------------------------------------------------------------------
         # Energy arc — internal phrase shaping
         # Complement the bass phrase's energy profile; override at key stages
         # (resolution always winds down; peak always arches).
@@ -464,6 +479,7 @@ class ArcController:
             "leadership":          self._leadership,
             "harmonic_mode":       self._harmony.current_mode_name(),
             "scale_source":        scale_source,
+            "scale_mode":          scale_mode,
             "phrase_energy_arc":   phrase_energy_arc,
             "motif_targets":       motif_targets,
             "motif_strength":      motif_strength,

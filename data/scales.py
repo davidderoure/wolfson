@@ -103,6 +103,46 @@ def chord_tones(chord_idx: int) -> frozenset:
     return frozenset((root + i) % 12 for i in intervals)
 
 
+def identify_mode(root: int, pcs: frozenset[int]) -> tuple[str, float]:
+    """
+    Return (mode_name, confidence) for the best-matching mode given a root
+    and an observed frozenset of pitch classes.
+
+    Confidence is a precision score: the fraction of observed pcs that are
+    contained within the candidate mode.  Among equal-precision candidates,
+    the most specific mode (fewest scale degrees) is preferred — so "blues"
+    wins over "dorian" when both cover the same observed notes perfectly.
+
+    Bebop scales and chromatic are excluded: their large note counts make
+    them overfit every partial observation.  Returns ("chromatic", 0.0) when
+    pcs is empty or no candidate scores above zero.
+    """
+    if not pcs:
+        return ("chromatic", 0.0)
+
+    # Ordered by jazz prevalence so ties resolve toward the idiomatic choice.
+    CANDIDATES = [
+        "dorian", "mixolydian", "ionian", "aeolian", "lydian",
+        "lydian_dom", "altered", "phrygian", "locrian",
+        "blues", "whole_tone", "diminished",
+    ]
+
+    best_mode  = "chromatic"
+    best_score = -1.0
+    best_size  = 13
+
+    for name in CANDIDATES:
+        expected  = scale_pitch_classes(root, name)
+        precision = len(pcs & expected) / len(pcs)
+        size      = len(expected)
+        if precision > best_score or (precision == best_score and size < best_size):
+            best_score = precision
+            best_mode  = name
+            best_size  = size
+
+    return (best_mode, best_score)
+
+
 def tritone_sub(chord_idx: int) -> int:
     """
     Return the tritone substitution of a chord index.

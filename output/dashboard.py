@@ -201,6 +201,7 @@ class WolfsonDashboard:
         stage     = self._params.get("stage",          "—")
         harm      = self._params.get("harmonic_mode",   "—")
         src       = self._params.get("scale_source",    "arc")
+        scale_mode = self._params.get("scale_mode",     "")
         contour   = self._params.get("contour_target",  "—")
         vel       = self._params.get("velocity",         80)
         lead      = self._params.get("leadership",      "—")
@@ -227,7 +228,7 @@ class WolfsonDashboard:
         grid.add_row(
             Text(stage.upper(),              style=f"bold {s_col}"),
             Text(harm,                       style="bold cyan"),
-            Text(f"scale  {src.upper()}",    style=src_col),
+            Text(f"scale  {src.upper()}  {scale_mode}", style=src_col),
             Text(f"{arrow}  {contour}",      style=_BODY),
         )
         grid.add_row(
