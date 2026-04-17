@@ -22,5 +22,14 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
+# LaTeX build artefacts
+*.aux
+*.log
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
+
 # macOS
 .DS_Store
+man.pdf
