@@ -14,6 +14,27 @@ class MidiListener:
         self.on_note_off = on_note_off
         self._midi_in = rtmidi.MidiIn()
 
+    @staticmethod
+    def check_ports():
+        """
+        Validate the configured MIDI input port before the UI starts.
+        Raises SystemExit with a readable message if the port is missing.
+        Call this before dashboard.start() so the error is always visible.
+        """
+        ports = rtmidi.MidiIn().get_ports()
+        if not ports:
+            raise SystemExit(
+                "Error: no MIDI input ports found.\n"
+                "Check that your MIDI interface is connected and recognised by the OS."
+            )
+        if MIDI_INPUT_PORT >= len(ports):
+            raise SystemExit(
+                f"Error: MIDI_INPUT_PORT={MIDI_INPUT_PORT} is out of range "
+                f"({len(ports)} port{'s' if len(ports) != 1 else ''} available).\n"
+                f"Available ports: {ports}\n"
+                f"Update MIDI_INPUT_PORT in config.py."
+            )
+
     def start(self):
         ports = self._midi_in.get_ports()
         if not ports:

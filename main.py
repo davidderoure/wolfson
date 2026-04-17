@@ -839,6 +839,13 @@ def main():
         on_note_off = detector.note_off,
     )
 
+    # Validate MIDI ports before the dashboard (or anything else) takes over
+    # the screen.  Both checks raise SystemExit with a readable message so the
+    # error is always visible — not hidden behind a Rich Live display.
+    MidiOutput.check_ports()
+    if not self_play:
+        MidiListener.check_ports()
+
     midi_out.start()
     midi_out.silence([SELF_PLAY_CH_A, SELF_PLAY_CH_B, comp_channel])   # clear any notes from previous run
 

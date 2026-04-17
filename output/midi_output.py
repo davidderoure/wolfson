@@ -71,6 +71,27 @@ class MidiOutput:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def check_ports():
+        """
+        Validate the configured MIDI output port before the UI starts.
+        Raises SystemExit with a readable message if the port is missing.
+        Call this before dashboard.start() so the error is always visible.
+        """
+        ports = rtmidi.MidiOut().get_ports()
+        if not ports:
+            raise SystemExit(
+                "Error: no MIDI output ports found.\n"
+                "Check that your MIDI interface is connected and recognised by the OS."
+            )
+        if MIDI_OUTPUT_PORT >= len(ports):
+            raise SystemExit(
+                f"Error: MIDI_OUTPUT_PORT={MIDI_OUTPUT_PORT} is out of range "
+                f"({len(ports)} port{'s' if len(ports) != 1 else ''} available).\n"
+                f"Available ports: {ports}\n"
+                f"Update MIDI_OUTPUT_PORT in config.py."
+            )
+
     def start(self):
         ports = self._midi_out.get_ports()
         if not ports:
