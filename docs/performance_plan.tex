@@ -23,15 +23,16 @@
 \definecolor{recapbg}{RGB}{224,245,228}
 \definecolor{resolutionbg}{RGB}{252,245,220}
 
+% Colour for musical-material cues (distinct from system-behaviour cues)
+\definecolor{musicnote}{RGB}{90,50,140}
+
 \setlist[itemize]{leftmargin=1.2em, itemsep=0pt, topsep=1pt, parsep=0pt}
 
 \setlength{\parskip}{0pt}
 \setlength{\parindent}{0pt}
 
-\newcommand{\stageheader}[3]{%
-  \cellcolor{#1}\textcolor{white}{\textbf{#2}}\\
-  \cellcolor{#1}\textcolor{white}{\small #3}%
-}
+% Musical-material cue: purple, italic
+\newcommand{\musicue}[1]{\textcolor{musicnote}{\textit{#1}}}
 
 \begin{document}
 
@@ -40,6 +41,8 @@
   {\small Bass improvisation cues by arc stage \;|\; 1 May 2026, Wolfson College Oxford}
 \end{center}
 
+\vspace{1pt}
+{\small\textbf{Before playing (spoken):} \textit{``I'm going to have a musical conversation with an AI\@. I play the bass — it plays the saxophone. Watch how it listens and responds to what I play.''}}
 \vspace{3pt}
 
 \begin{tabularx}{\linewidth}{@{}|X|X|X|X|X|@{}}
@@ -60,18 +63,21 @@
   \item \textbf{Leave 2+ beats of rest} after each phrase — system needs \textasciitilde2\,s silence to close the phrase and respond.
   \item \textbf{Play quietly} — sax mirrors your dynamic. A quiet opening makes later contrast dramatic.
   \item \textbf{Plant a 2–3 note motif} — it will be recalled in recapitulation.
+  \item \musicue{Musical material: a 3–5 note D minor fragment (e.g.\ the \textit{So What} opening figure, or D–F–G–A). The echo lands on sax immediately — the audience hears ``it's copying him.'' Keep it melodic; chromatic lines are harder to follow.}
 \end{itemize}
 &
 \cellcolor{buildingbg}
 \begin{itemize}
   \item \textbf{Play D Dorian} (D E F G A B C) — 4+ distinct pitch classes shifts the sax harmonic language. Switch away briefly to hear it change.
+  \item \musicue{Modal groove: play the \textit{So What} vamp or a D Dorian walking bassline \textbf{continuously for 8–10\,s} → sax enters trading mode and improvises over your groove. This is the jazz-duo moment the audience will recognise.}
   \item \textbf{Repeat a riff 3+ times} — sax enters development mode: stronger motivic use, directed contour. It starts to \textit{argue with} the riff.
-  \item \textbf{Play continuously (\textasciitilde8\,s)} to trigger trading mode — sax breaks in, then re-enters every \textasciitilde4\,s (just under a bar).
+  \item \musicue{Late building (\textasciitilde2:00): introduce a bluesy bass lick (D blues scale: D–F–G–A$\flat$–A–C) to seed the peak blues character.}
   \item \textbf{Let the sax repeat} (\texttt{-\,-sax-riff-prob}) — sax insists on its phrase; you develop underneath. After two replays it varies itself.
 \end{itemize}
 &
 \cellcolor{peakbg}
 \begin{itemize}
+  \item \musicue{Blues bassline (loud, driving): sax is in progression/blues mode here — the harmonic context matches. A 12-bar blues pattern is universally legible to any audience and fits the system's peak harmonic mode.}
   \item \textbf{Play loudly and densely, then sparsely} — busy bass invites sparser sax; a terse phrase invites a rush of notes.
   \item \textbf{Rising phrase then falling} — contour steering. Sax responds to a rising line with a descending resolution and vice versa.
   \item \textbf{Switch between Q\,\&\,A and continuous playing} — short phrases with 2-beat rests give call-and-response; sustained riff triggers trading mode. The contrast is most audible here.
@@ -81,11 +87,13 @@
 \begin{itemize}
   \item \textbf{Play low} — register contrast pushes sax into upper register. Spatial separation is most audible here.
   \item \textbf{Listen} — sax quotes motifs from sparse and building stages. Pause to let the audience hear the system remembering.
+  \item \musicue{Return quietly to the \textit{So What} figure from building — sax may quote it back. The musical narrative closes: the AI has remembered.}
 \end{itemize}
 &
 \cellcolor{resolutionbg}
 \begin{itemize}
-  \item \textbf{Stop playing} — sax closes the piece unaccompanied. Put the bass down deliberately. The clearest demonstration of musical agency.
+  \item \musicue{One final long bass note, then silence. Put the bass down deliberately.}
+  \item \textbf{Sax closes the piece unaccompanied} — the clearest demonstration of musical agency. Let it finish.
 \end{itemize}
 \\
 
@@ -98,7 +106,8 @@
 \textbf{Trading mode:} play continuously for \textasciitilde8\,s — sax breaks in and re-enters every \textasciitilde4\,s.\quad
 \textbf{Echo:} first 4 exchanges are literal echoes; after that Wolfson generates freely.\quad
 \textbf{Motif:} repeat sparse motif 2--3$\times$ for strong recapitulation recall.\quad
-\textbf{Auto-start:} Wolfson plays first; join when ready.
+\textbf{Auto-start:} Wolfson plays first; join when ready.\quad
+\textcolor{musicnote}{\textit{Purple/italic cues = musical material suggestions.}}
 }
 
 \end{document}
