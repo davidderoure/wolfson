@@ -9,7 +9,8 @@ hundreds of jazz saxophone solos; it hears each bass phrase, analyses its charac
 five minutes the music traces a journey through jazz history: an exploratory,
 chromatic opening gives way to the modal sound of Miles Davis and Herbie Hancock,
 builds to a hard-driving peak, and settles into a meditative close. No two
-performances are identical. The title works on three levels: the *README* file is
+performances are identical — the music that emerges depends entirely on
+what the bassist chooses to play. The title works on three levels: the *README* file is
 the first thing you read when you encounter a piece of software; the software reads
 me, the bassist, responding to whatever I play; and it is a sideways glance at
 *Recorda Me* — "remember me" — a jazz standard, and a reminder that all
