@@ -242,6 +242,12 @@ def main():
              "lazily on the first bass phrase. Use this when you want Wolfson to "
              "open the performance and have the bassist join in.",
     )
+    parser.add_argument(
+        "--model", metavar="NAME_OR_PATH", default=None,
+        help="Model to load. Short name (e.g. sax_aug → models/sax_aug_best.pt) "
+             "or explicit path (e.g. models/sax_aug_best.pt). "
+             f"Default: models/{DEFAULT_INSTRUMENT}_best.pt",
+    )
     args = parser.parse_args()
 
     self_play      = args.self_play
@@ -255,8 +261,17 @@ def main():
     comp_channel   = args.comp_channel
     temp_offset    = args.temperature
 
+    # Resolve --model to a path: short name → models/<name>_best.pt, else use as-is
+    if args.model is None:
+        model_path = None   # PhraseGenerator uses its own default
+    elif args.model.endswith(".pt"):
+        model_path = args.model
+    else:
+        model_path = Path(__file__).parent / "models" / f"{args.model}_best.pt"
+
     memory    = PhraseMemory()
-    generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT)
+    generator = PhraseGenerator(instrument=DEFAULT_INSTRUMENT,
+                                model_path=model_path)
 
     arc       = ArcController(memory)
     midi_out  = MidiOutput()

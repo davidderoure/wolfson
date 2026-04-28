@@ -342,10 +342,47 @@ def load_solos_from_midi(midi_dir: Path, instrument_codes: list[str]) -> list[di
 
 
 # ---------------------------------------------------------------------------
+# Key-transposition augmentation
+# ---------------------------------------------------------------------------
+
+def _transpose_sequence(
+    tokens:    np.ndarray,
+    chord_seq: np.ndarray,
+    semitones: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Return copies of tokens and chord_seq transposed by semitones.
+
+    Pitch tokens are shifted and clamped to the encoding range.
+    Duration tokens and END are left unchanged.
+    Chord indices have their root rotated; NC_INDEX is left unchanged.
+    """
+    from data.encoding import N_PITCHES, PITCH_MIN, PITCH_MAX
+    from data.chords   import NC_INDEX, N_QUALITIES
+
+    new_tokens = tokens.copy()
+    for i, t in enumerate(tokens):
+        if 0 <= t < N_PITCHES:                          # pitch token
+            pitch = int(t) + PITCH_MIN
+            new_pitch = max(PITCH_MIN, min(PITCH_MAX, pitch + semitones))
+            new_tokens[i] = new_pitch - PITCH_MIN
+
+    new_chords = chord_seq.copy()
+    for i, c in enumerate(chord_seq):
+        if c != NC_INDEX:
+            root_pc = int(c) // N_QUALITIES
+            quality = int(c) %  N_QUALITIES
+            new_chords[i] = ((root_pc + semitones) % 12) * N_QUALITIES + quality
+
+    return new_tokens, new_chords
+
+
+# ---------------------------------------------------------------------------
 # Shared extraction and saving
 # ---------------------------------------------------------------------------
 
-def _extract_and_save(family: str, solos: list[dict]) -> None:
+def _extract_and_save(family: str, solos: list[dict],
+                      augment_keys: bool = False) -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     if not solos:
@@ -369,18 +406,24 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
                 if n["pitch"] < pitch_min or n["pitch"] > pitch_max:
                     skipped_pitch += 1
 
-            tokens     = phrase_to_tokens(phrase, solo["tempo_bpm"])
-            chord_seq  = phrase_to_chord_sequence(phrase)
-            all_sequences.append(np.array(tokens,    dtype=np.int16))
-            all_chords.append(   np.array(chord_seq, dtype=np.int8))
-            meta.append({
-                "melid":      solo["melid"],
-                "title":      solo["title"],
-                "performer":  solo["performer"],
-                "instrument": solo["instrument"],
-                "tempo_bpm":  solo["tempo_bpm"],
-                "n_notes":    len(phrase),
-            })
+            tokens    = np.array(phrase_to_tokens(phrase, solo["tempo_bpm"]), dtype=np.int16)
+            chord_seq = np.array(phrase_to_chord_sequence(phrase),          dtype=np.int8)
+
+            shifts = range(12) if augment_keys else range(1)
+            for shift in shifts:
+                t, c = (_transpose_sequence(tokens, chord_seq, shift)
+                        if shift else (tokens, chord_seq))
+                all_sequences.append(t)
+                all_chords.append(c)
+                meta.append({
+                    "melid":         solo["melid"],
+                    "title":         solo["title"],
+                    "performer":     solo["performer"],
+                    "instrument":    solo["instrument"],
+                    "tempo_bpm":     solo["tempo_bpm"],
+                    "n_notes":       len(phrase),
+                    "transposition": shift,
+                })
             total_phrases += 1
             total_notes   += len(phrase)
 
@@ -393,8 +436,11 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
     with open(out_meta, "w") as f:
         json.dump(meta, f, indent=2)
 
+    n_stored = len(all_sequences)
     print(f"\n{'Solos processed:':30s} {len(solos)}")
     print(f"{'Phrases extracted:':30s} {total_phrases}")
+    if augment_keys:
+        print(f"{'Stored (×12 keys):':30s} {n_stored}")
     print(f"{'Total notes:':30s} {total_notes}")
     print(f"{'Notes outside pitch range:':30s} {skipped_pitch} (clipped, not dropped)")
     print(f"{'Vocab size:':30s} {VOCAB_SIZE}")
@@ -408,7 +454,8 @@ def _extract_and_save(family: str, solos: list[dict]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def prepare(family: str, midi_only: bool = False) -> None:
+def prepare(family: str, midi_only: bool = False,
+            augment_keys: bool = False) -> None:
     codes = codes_for(family)
 
     if midi_only:
@@ -430,7 +477,12 @@ def prepare(family: str, midi_only: bool = False) -> None:
         solos = load_solos(db, codes)
         db.close()
 
-    _extract_and_save(family, solos)
+    if augment_keys:
+        print("Key augmentation ON — each phrase will be stored in all 12 keys.")
+        print("Training data size will be ×12. Train with a new --instrument name")
+        print("  e.g.  python generator/train.py --instrument sax_aug")
+
+    _extract_and_save(family, solos, augment_keys=augment_keys)
 
 
 def main():
@@ -442,6 +494,10 @@ def main():
                        help="Instrument family to extract (sax, trumpet, trombone, flute)")
     parser.add_argument("--midi-only", action="store_true",
                         help="Extract from MIDI files only, without the SQLite database")
+    parser.add_argument("--augment-keys", action="store_true",
+                        help="Store each phrase in all 12 transpositions (×12 training data). "
+                             "Use a new instrument name to keep the augmented data separate: "
+                             "  python data/prepare.py --instrument sax_aug --augment-keys")
     args = parser.parse_args()
 
     if args.inspect:
@@ -452,7 +508,8 @@ def main():
         inspect(db)
         db.close()
     else:
-        prepare(args.instrument, midi_only=args.midi_only)
+        prepare(args.instrument, midi_only=args.midi_only,
+                augment_keys=args.augment_keys)
 
 
 if __name__ == "__main__":
